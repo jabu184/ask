@@ -40,15 +40,16 @@ function computeQuestionResults(question, pollId) {
   if (question.question_type === 'word_cloud') {
     const wordFrequency = {};
     rawVotes.forEach(v => {
-      // Normalise phrases: trim, lowercase
-      const word = (v.value || '').trim();
-      if (!word) return;
-      const lower = word.toLowerCase();
-      // Keep capitalized display version of most frequent capitalization
-      if (!wordFrequency[lower]) {
-        wordFrequency[lower] = { text: word, count: 0 };
-      }
-      wordFrequency[lower].count += 1;
+      // Split any comma, semicolon or newline delimited words/phrases
+      const parts = String(v.value || '').split(/[,;\n]+/).map(w => w.trim()).filter(Boolean);
+      parts.forEach(word => {
+        const lower = word.toLowerCase();
+        // Keep display version of most frequent capitalization
+        if (!wordFrequency[lower]) {
+          wordFrequency[lower] = { text: word, count: 0 };
+        }
+        wordFrequency[lower].count += 1;
+      });
     });
 
     const words = Object.values(wordFrequency)
@@ -250,15 +251,41 @@ function initPollSocket(httpServer) {
           return socket.emit('poll:error', { message: 'Question not found' });
         }
 
-        // Upsert vote
-        const existing = db.prepare('SELECT id FROM poll_votes WHERE question_id = ? AND participant_id = ?').get(questionId, participantId);
-        if (existing) {
-          db.prepare('UPDATE poll_votes SET value = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?').run(String(value), existing.id);
-        } else {
-          db.prepare(`
+        // Check question configuration for word_cloud multiple entries
+        let allowMultipleWords = true;
+        if (question.question_type === 'word_cloud') {
+          try {
+            const opts = typeof question.options_json === 'string' ? JSON.parse(question.options_json) : (question.options_json || {});
+            allowMultipleWords = opts.allowMultiple !== false;
+          } catch (e) {
+            allowMultipleWords = true;
+          }
+        }
+
+        if (question.question_type === 'word_cloud' && allowMultipleWords) {
+          const words = String(value)
+            .split(/[,;\n]+/)
+            .map(w => w.trim())
+            .filter(Boolean);
+
+          const insertVote = db.prepare(`
             INSERT INTO poll_votes (id, poll_id, question_id, participant_id, value)
             VALUES (?, ?, ?, ?, ?)
-          `).run(generateId(), pollId, questionId, participantId, String(value));
+          `);
+          words.forEach(w => {
+            insertVote.run(generateId(), pollId, questionId, participantId, w);
+          });
+        } else {
+          // Single vote upsert
+          const existing = db.prepare('SELECT id FROM poll_votes WHERE question_id = ? AND participant_id = ?').get(questionId, participantId);
+          if (existing) {
+            db.prepare('UPDATE poll_votes SET value = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?').run(String(value).trim(), existing.id);
+          } else {
+            db.prepare(`
+              INSERT INTO poll_votes (id, poll_id, question_id, participant_id, value)
+              VALUES (?, ?, ?, ?, ?)
+            `).run(generateId(), pollId, questionId, participantId, String(value).trim());
+          }
         }
 
         socket.emit('poll:vote_confirmed', { questionId, value });
@@ -428,6 +455,9 @@ function initPollSocket(httpServer) {
         } else if (action === 'answer') {
           db.prepare('UPDATE poll_qa_questions SET is_answered = 1, is_highlighted = 0 WHERE id = ?').run(qaQuestionId);
           io.to(`poll:${pollId}`).emit('qa:question_answered', { qaQuestionId });
+        } else if (action === 'unanswer') {
+          db.prepare('UPDATE poll_qa_questions SET is_answered = 0 WHERE id = ?').run(qaQuestionId);
+          io.to(`poll:${pollId}`).emit('qa:question_unanswered', { qaQuestionId });
         } else if (action === 'highlight') {
           // Clear other highlighted questions first
           db.prepare('UPDATE poll_qa_questions SET is_highlighted = 0 WHERE poll_id = ?').run(pollId);

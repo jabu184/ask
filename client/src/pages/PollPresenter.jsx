@@ -171,6 +171,12 @@ export default function PollPresenter() {
           );
         });
 
+        socket.on('qa:question_unanswered', ({ qaQuestionId }) => {
+          setQaQuestions((prev) =>
+            prev.map((q) => (q.id === qaQuestionId ? { ...q, is_answered: 0 } : q))
+          );
+        });
+
         socket.on('qa:question_deleted', ({ qaQuestionId }) => {
           setQaQuestions((prev) => prev.filter((q) => q.id !== qaQuestionId));
         });

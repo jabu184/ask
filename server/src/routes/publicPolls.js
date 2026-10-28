@@ -81,15 +81,41 @@ router.post('/:id/vote', (req, res) => {
       return res.status(404).json({ error: 'Question not found' });
     }
 
-    // Upsert vote
-    const existing = db.prepare('SELECT id FROM poll_votes WHERE question_id = ? AND participant_id = ?').get(questionId, participantId);
-    if (existing) {
-      db.prepare('UPDATE poll_votes SET value = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?').run(String(value), existing.id);
-    } else {
-      db.prepare(`
+    // Check question configuration for word_cloud multiple entries
+    let allowMultipleWords = true;
+    if (question.question_type === 'word_cloud') {
+      try {
+        const opts = typeof question.options_json === 'string' ? JSON.parse(question.options_json) : (question.options_json || {});
+        allowMultipleWords = opts.allowMultiple !== false;
+      } catch (e) {
+        allowMultipleWords = true;
+      }
+    }
+
+    if (question.question_type === 'word_cloud' && allowMultipleWords) {
+      const words = String(value)
+        .split(/[,;\n]+/)
+        .map(w => w.trim())
+        .filter(Boolean);
+
+      const insertVote = db.prepare(`
         INSERT INTO poll_votes (id, poll_id, question_id, participant_id, value)
         VALUES (?, ?, ?, ?, ?)
-      `).run(generateId(), pollId, questionId, participantId, String(value));
+      `);
+      words.forEach(w => {
+        insertVote.run(generateId(), pollId, questionId, participantId, w);
+      });
+    } else {
+      // Single vote upsert
+      const existing = db.prepare('SELECT id FROM poll_votes WHERE question_id = ? AND participant_id = ?').get(questionId, participantId);
+      if (existing) {
+        db.prepare('UPDATE poll_votes SET value = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?').run(String(value).trim(), existing.id);
+      } else {
+        db.prepare(`
+          INSERT INTO poll_votes (id, poll_id, question_id, participant_id, value)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(generateId(), pollId, questionId, participantId, String(value).trim());
+      }
     }
 
     const results = computeQuestionResults(question, pollId);

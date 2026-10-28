@@ -31,6 +31,7 @@ import {
   ArrowUpRight,
   ThumbsUp,
   CheckCircle,
+  RotateCcw,
   Pin,
   Trash2,
   ExternalLink,
@@ -159,6 +160,12 @@ export default function PollHost() {
         socket.on('qa:question_answered', ({ qaQuestionId }) => {
           setQaQuestions((prev) =>
             prev.map((q) => (q.id === qaQuestionId ? { ...q, is_answered: 1, is_highlighted: 0 } : q))
+          );
+        });
+
+        socket.on('qa:question_unanswered', ({ qaQuestionId }) => {
+          setQaQuestions((prev) =>
+            prev.map((q) => (q.id === qaQuestionId ? { ...q, is_answered: 0 } : q))
           );
         });
 
@@ -842,6 +849,18 @@ export default function PollHost() {
                           <CheckCircle className="w-4 h-4" />
                         </button>
                       </>
+                    )}
+
+                    {item.is_approved === 1 && item.is_answered === 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleModerateQa(item.id, 'unanswer')}
+                        className="px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 font-semibold text-xs flex items-center space-x-1.5 transition"
+                        title="Mark as unanswered (move back to Live)"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Reopen</span>
+                      </button>
                     )}
 
                     <button

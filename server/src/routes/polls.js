@@ -127,6 +127,8 @@ router.post('/', (req, res) => {
           optionsJson = JSON.stringify(q.options || ['Option 1', 'Option 2']);
         } else if (q.question_type === 'rating') {
           optionsJson = JSON.stringify({ max: q.maxRating || 5 });
+        } else if (q.question_type === 'word_cloud') {
+          optionsJson = JSON.stringify({ allowMultiple: q.allowMultiple !== false });
         }
 
         insertQ.run(
@@ -281,6 +283,8 @@ router.put('/:id', (req, res) => {
             optionsJson = JSON.stringify(q.options || ['Option 1', 'Option 2']);
           } else if (q.question_type === 'rating') {
             optionsJson = JSON.stringify({ max: q.maxRating || 5 });
+          } else if (q.question_type === 'word_cloud') {
+            optionsJson = JSON.stringify({ allowMultiple: q.allowMultiple !== false });
           }
 
           if (q.id && existingQs.some(e => e.id === q.id)) {

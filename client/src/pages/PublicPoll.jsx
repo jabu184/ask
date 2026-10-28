@@ -189,6 +189,12 @@ export default function PublicPoll() {
           );
         });
 
+        socket.on('qa:question_unanswered', ({ qaQuestionId }) => {
+          setQaQuestions((prev) =>
+            prev.map((q) => (q.id === qaQuestionId ? { ...q, is_answered: 0 } : q))
+          );
+        });
+
         socket.on('qa:question_highlighted', ({ qaQuestionId }) => {
           setQaQuestions((prev) =>
             prev.map((q) => ({
@@ -536,41 +542,67 @@ export default function PublicPoll() {
                     )}
 
                     {/* Word Cloud */}
-                    {currentQuestion.question_type === 'word_cloud' && (
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          if (textInput.trim()) {
-                            handleVote(textInput.trim());
-                            setTextInput('');
-                          }
-                        }}
-                        className="space-y-4"
-                      >
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                            {hasVoted ? 'Submit another or revised word:' : 'Enter your word or short phrase:'}
-                          </label>
-                          <input
-                            type="text"
-                            maxLength={35}
-                            value={textInput}
-                            onChange={(e) => setTextInput(e.target.value)}
-                            placeholder="e.g. Innovative, Fast, Leadership..."
-                            className="w-full px-4 py-3.5 rounded-2xl border-2 border-slate-200 focus:border-brand-500 focus:ring-0 text-base font-medium text-slate-900 placeholder:text-slate-400"
-                            autoFocus
-                          />
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={!textInput.trim() || submittingVote}
-                          className="w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-base shadow-sm transition active:scale-98 flex items-center justify-center gap-2"
+                    {currentQuestion.question_type === 'word_cloud' && (() => {
+                      const allowMultiple = currentQuestion.options?.allowMultiple !== false;
+                      return (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (textInput.trim()) {
+                              handleVote(textInput.trim());
+                              setTextInput('');
+                            }
+                          }}
+                          className="space-y-4"
                         >
-                          <Send className="w-4 h-4" />
-                          <span>{hasVoted ? 'Update / Add Word' : 'Submit Word'}</span>
-                        </button>
-                      </form>
-                    )}
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                              {allowMultiple
+                                ? hasVoted
+                                  ? 'Submit another word (or multiple separated by commas):'
+                                  : 'Enter word(s) or short phrases (comma-separated allowed):'
+                                : hasVoted
+                                ? 'Change your word:'
+                                : 'Enter your word (single submission):'}
+                            </label>
+                            <input
+                              type="text"
+                              maxLength={allowMultiple ? 100 : 35}
+                              value={textInput}
+                              onChange={(e) => setTextInput(e.target.value)}
+                              placeholder={
+                                allowMultiple
+                                  ? 'e.g. Innovative, Fast, Leadership...'
+                                  : 'e.g. Innovative'
+                              }
+                              className="w-full px-4 py-3.5 rounded-2xl border-2 border-slate-200 focus:border-brand-500 focus:ring-0 text-base font-medium text-slate-900 placeholder:text-slate-400"
+                              autoFocus
+                            />
+                            {allowMultiple && (
+                              <p className="text-[11px] text-slate-500 mt-1.5">
+                                You can submit multiple words to this cloud. Enter one at a time or separate with commas.
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            type="submit"
+                            disabled={!textInput.trim() || submittingVote}
+                            className="w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-base shadow-sm transition active:scale-98 flex items-center justify-center gap-2"
+                          >
+                            <Send className="w-4 h-4" />
+                            <span>
+                              {allowMultiple
+                                ? hasVoted
+                                  ? 'Add Another Word'
+                                  : 'Submit Word'
+                                : hasVoted
+                                ? 'Update Word'
+                                : 'Submit Word'}
+                            </span>
+                          </button>
+                        </form>
+                      );
+                    })()}
 
                     {/* Star / Number Rating */}
                     {currentQuestion.question_type === 'rating' && (

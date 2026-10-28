@@ -67,7 +67,8 @@ export default function PollBuilder() {
       question_text: '',
       question_type: 'multiple_choice',
       options: ['Option 1', 'Option 2'],
-      maxRating: 5
+      maxRating: 5,
+      allowMultiple: true
     }
   ]);
 
@@ -93,11 +94,13 @@ export default function PollBuilder() {
               data.questions.map((q) => {
                 let opts = ['Option 1', 'Option 2'];
                 let maxR = 5;
+                let allowMulti = true;
                 if (q.options) {
                   if (Array.isArray(q.options)) {
                     opts = q.options;
-                  } else if (q.options.max) {
-                    maxR = q.options.max;
+                  } else if (typeof q.options === 'object') {
+                    if (q.options.max) maxR = q.options.max;
+                    if (q.options.allowMultiple !== undefined) allowMulti = Boolean(q.options.allowMultiple);
                   }
                 }
                 return {
@@ -105,7 +108,8 @@ export default function PollBuilder() {
                   question_text: q.question_text || '',
                   question_type: q.question_type || 'multiple_choice',
                   options: opts,
-                  maxRating: maxR
+                  maxRating: maxR,
+                  allowMultiple: allowMulti
                 };
               })
             );
@@ -130,7 +134,8 @@ export default function PollBuilder() {
         question_text: '',
         question_type: type,
         options: ['Option 1', 'Option 2'],
-        maxRating: 5
+        maxRating: 5,
+        allowMultiple: true
       }
     ]);
   };
@@ -230,10 +235,12 @@ export default function PollBuilder() {
       qa_enabled: qaEnabled,
       qa_moderation: qaModeration,
       questions: questions.map((q) => ({
+        id: q.id,
         question_text: q.question_text.trim(),
         question_type: q.question_type,
         options: q.question_type === 'multiple_choice' ? q.options.map((o) => o.trim()).filter(Boolean) : null,
-        maxRating: q.question_type === 'rating' ? q.maxRating || 5 : null
+        maxRating: q.question_type === 'rating' ? q.maxRating || 5 : null,
+        allowMultiple: q.question_type === 'word_cloud' ? (q.allowMultiple !== false) : true
       }))
     };
 
@@ -576,13 +583,42 @@ export default function PollBuilder() {
                 )}
 
                 {q.question_type === 'word_cloud' && (
-                  <div className="p-3 bg-violet-50/50 border border-violet-100 rounded-xl flex items-center space-x-3 text-xs text-violet-800">
-                    <Cloud className="w-5 h-5 text-violet-500 flex-shrink-0" />
-                    <div>
-                      <span className="font-semibold block">Word Cloud Enabled</span>
-                      <span className="text-violet-600/80">
-                        Participants enter single words or short phrases. Repeated words grow larger and more vibrant dynamically.
-                      </span>
+                  <div className="p-4 bg-violet-50/50 border border-violet-100 rounded-2xl space-y-3">
+                    <div className="flex items-center space-x-3 text-xs text-violet-900">
+                      <Cloud className="w-5 h-5 text-violet-600 flex-shrink-0" />
+                      <div>
+                        <span className="font-bold text-sm block">Word Cloud Configuration</span>
+                        <span className="text-violet-700/80">
+                          Participants enter words or short phrases. Repeated words scale dynamically in the live cloud.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-violet-100 flex items-center justify-between">
+                      <div className="pr-4">
+                        <span className="text-xs font-bold text-slate-800 block">
+                          Allow entry of multiple words
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          When enabled, participants can submit multiple words/phrases to the cloud (default on)
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => updateQuestion(qIdx, 'allowMultiple', q.allowMultiple === false ? true : false)}
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                          q.allowMultiple !== false ? 'bg-indigo-600' : 'bg-slate-300'
+                        }`}
+                        role="switch"
+                        aria-checked={q.allowMultiple !== false}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                            q.allowMultiple !== false ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
                     </div>
                   </div>
                 )}
