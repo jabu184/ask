@@ -1,0 +1,25 @@
+services:
+  surveylite:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: surveylite-app
+    restart: unless-stopped
+    ports:
+      - "3003:3000"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATA_DIR=/app/data
+      - JWT_SECRET=${JWT_SECRET:-surveylite-super-secure-production-secret-key-change-me}
+      - SMTP_HOST=${SMTP_HOST:-smtp.email.uk-london-1.oci.oraclecloud.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - EMAIL_FROM=${EMAIL_FROM:-Ask by urspace.com <ask@urspace.com>}
+      - APP_URL=${APP_URL:-https://ask.urspace.com}

@@ -1,0 +1,16 @@
+{
+  "name": "surveylite-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ask by urspace.com - Free Survey Engine",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "build:client": "npm --prefix client run build",
+    "start": "npm --prefix server start"
+  },
+  "keywords": ["survey", "free", "react", "express", "sqlite"],
+  "author": "",
+  "license": "MIT"
+}
