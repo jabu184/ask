@@ -576,10 +576,7 @@ export default function PublicPoll() {
             {isQuizMode && quizProfile && (
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs">
                 <span className="text-base">{quizProfile.avatar || '🚀'}</span>
-                <span className="truncate max-w-[90px]">{quizProfile.name}</span>
-                <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-amber-950 font-black text-[10px]">
-                  {quizProfile.score || 0} pts
-                </span>
+                <span className="truncate max-w-[120px]">{quizProfile.name}</span>
               </div>
             )}
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold">
@@ -736,54 +733,7 @@ export default function PublicPoll() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-6">
-                {/* Live Quiz Leaderboard Overlay/Banner when toggled on by host */}
-                {showLeaderboard && (
-                  <div className="bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-3xl p-5 shadow-sm border border-amber-400 animate-fadeIn space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <Trophy className="w-5 h-5 text-amber-200" />
-                        <h3 className="font-black text-sm uppercase tracking-wider">Live Quiz Leaderboard</h3>
-                      </div>
-                      {quizProfile && (
-                        <span className="text-xs bg-amber-700/60 text-white px-2.5 py-0.5 rounded-full font-bold">
-                          Your Score: {quizProfile.score || 0} pts
-                        </span>
-                      )}
-                    </div>
-
-                    {leaderboard.length === 0 ? (
-                      <p className="text-xs text-amber-100">Scores will update as questions are answered!</p>
-                    ) : (
-                      <div className="space-y-1.5 pt-1">
-                        {leaderboard.slice(0, 5).map((player, idx) => {
-                          const isMe = player.participant_id === participantId;
-                          return (
-                            <div
-                              key={player.participant_id || idx}
-                              className={`p-2 rounded-xl text-xs flex items-center justify-between font-semibold ${
-                                isMe
-                                  ? 'bg-white text-slate-950 font-black shadow-xs ring-2 ring-amber-300'
-                                  : 'bg-amber-700/40 text-amber-50'
-                              }`}
-                            >
-                              <div className="flex items-center space-x-2 truncate">
-                                <span className="w-5 text-center font-bold">
-                                  {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
-                                </span>
-                                <span className="text-base">{player.avatar || '🚀'}</span>
-                                <span className="truncate">{player.name} {isMe ? '(You)' : ''}</span>
-                              </div>
-                              <span className="font-black ml-2 whitespace-nowrap">{player.score} {player.score === 1 ? 'pt' : 'pts'}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm flex flex-col">
+              <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm flex flex-col">
                 {/* Question Header */}
                 <div className="mb-6">
                   <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
@@ -1084,10 +1034,9 @@ export default function PublicPoll() {
                   </div>
                 )}
               </div>
-            </div>
-          )}
-        </div>
-      ) : (
+            )}
+          </div>
+        ) : (
           /* ==============================================================
              AUDIENCE Q&A TAB
              ============================================================== */
