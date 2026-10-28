@@ -688,6 +688,7 @@ export default function PollHost() {
                   {/* Rating Chart */}
                   {currentQuestion.question_type === 'rating' && (
                     <LiveRatingChart
+                      ratingData={liveResults}
                       average={liveResults?.average || 0}
                       maxRating={liveResults?.maxRating || 5}
                       totalVotes={liveResults?.totalVotes || 0}

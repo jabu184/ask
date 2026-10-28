@@ -567,11 +567,19 @@ router.get('/:id/analytics', (req, res) => {
     const totalParticipants = db.prepare('SELECT COUNT(DISTINCT participant_id) as count FROM poll_votes WHERE poll_id = ?').get(poll.id).count;
     const qaQuestions = db.prepare('SELECT * FROM poll_qa_questions WHERE poll_id = ? ORDER BY is_highlighted DESC, upvotes DESC, created_at DESC').all(poll.id);
 
+    const stats = {
+      totalVotes,
+      uniqueParticipants: totalParticipants,
+      questionCount: questions.length,
+      qaCount: qaQuestions.length
+    };
+
     res.json({
       poll,
-      questions: questionsAnalytics,
+      stats,
       totalVotes,
       totalParticipants,
+      questions: questionsAnalytics,
       qaQuestions
     });
   } catch (err) {

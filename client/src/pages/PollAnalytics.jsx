@@ -67,7 +67,15 @@ export default function PollAnalytics() {
     );
   }
 
-  const { poll, stats, questions, qaQuestions } = analytics;
+  const poll = analytics.poll || {};
+  const questions = analytics.questions || [];
+  const qaQuestions = analytics.qaQuestions || [];
+  const stats = analytics.stats || {
+    totalVotes: analytics.totalVotes ?? 0,
+    uniqueParticipants: analytics.totalParticipants ?? 0,
+    questionCount: questions.length,
+    qaCount: qaQuestions.length
+  };
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -213,6 +221,7 @@ export default function PollAnalytics() {
 
               {q.question_type === 'rating' && (
                 <LiveRatingChart
+                  ratingData={q.results}
                   average={q.results?.average || 0}
                   maxRating={q.results?.maxRating || 5}
                   totalVotes={q.results?.totalVotes || 0}
