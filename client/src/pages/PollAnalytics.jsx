@@ -18,7 +18,8 @@ import {
   ThumbsUp,
   Clock,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Trophy
 } from 'lucide-react';
 
 export default function PollAnalytics() {
@@ -70,6 +71,7 @@ export default function PollAnalytics() {
   const poll = analytics.poll || {};
   const questions = analytics.questions || [];
   const qaQuestions = analytics.qaQuestions || [];
+  const leaderboard = analytics.leaderboard || [];
   const stats = analytics.stats || {
     totalVotes: analytics.totalVotes ?? 0,
     uniqueParticipants: analytics.totalParticipants ?? 0,
@@ -177,6 +179,53 @@ export default function PollAnalytics() {
           </div>
         </div>
       </div>
+
+      {/* Quiz Mode Leaderboard & Final Scores */}
+      {Boolean(poll.is_quiz_mode) && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm mb-10">
+          <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
+            <div className="flex items-center space-x-2">
+              <Trophy className="w-5 h-5 text-amber-500" />
+              <h2 className="text-lg font-bold text-slate-900">Quiz Leaderboard & Final Player Rankings</h2>
+            </div>
+            <span className="text-xs font-semibold text-slate-500">
+              {leaderboard.length} Ranked Players
+            </span>
+          </div>
+
+          {leaderboard.length === 0 ? (
+            <p className="text-xs text-slate-400 italic py-4 text-center">No participants scored points in this quiz.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider">
+                    <th className="py-2.5 px-3 w-20">Rank</th>
+                    <th className="py-2.5 px-3">Player</th>
+                    <th className="py-2.5 px-3 text-right">Final Score</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {leaderboard.map((player, idx) => (
+                    <tr key={player.participant_id || idx} className={idx < 3 ? 'bg-amber-50/40 font-bold' : ''}>
+                      <td className="py-3 px-3">
+                        {idx === 0 ? '🥇 1st' : idx === 1 ? '🥈 2nd' : idx === 2 ? '🥉 3rd' : `#${idx + 1}`}
+                      </td>
+                      <td className="py-3 px-3 flex items-center space-x-2.5">
+                        <span className="text-lg">{player.avatar || '🚀'}</span>
+                        <span className="text-slate-900 font-bold">{player.name || 'Anonymous'}</span>
+                      </td>
+                      <td className="py-3 px-3 text-right font-black text-amber-600 text-sm">
+                        {player.score} {player.score === 1 ? 'pt' : 'pts'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Questions Results Breakdown */}
       <div className="space-y-6 mb-10">

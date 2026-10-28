@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../config/db');
 const { requireAuth } = require('../middleware/auth');
 const { generateId, generatePollPin } = require('../utils/id');
-const { computeQuestionResults, getIO } = require('../services/pollSocket');
+const { computeQuestionResults, getIO, computePollLeaderboard } = require('../services/pollSocket');
 const { Parser } = require('json2csv');
 
 const router = express.Router();
@@ -51,6 +51,9 @@ router.get('/', (req, res) => {
       ...p,
       voting_open: Boolean(p.voting_open),
       show_results: Boolean(p.show_results),
+      show_correct_answer: Boolean(p.show_correct_answer),
+      is_quiz_mode: Boolean(p.is_quiz_mode),
+      show_leaderboard: Boolean(p.show_leaderboard),
       qa_enabled: Boolean(p.qa_enabled),
       qa_moderation: Boolean(p.qa_moderation)
     }));
@@ -68,7 +71,16 @@ router.get('/', (req, res) => {
  */
 router.post('/', (req, res) => {
   try {
-    const { title, description, code: customCode, qa_enabled = true, qa_moderation = false, questions = [] } = req.body;
+    const {
+      title,
+      description,
+      code: customCode,
+      qa_enabled = true,
+      qa_moderation = false,
+      is_quiz_mode = false,
+      isQuizMode = false,
+      questions = []
+    } = req.body;
 
     if (!title || !title.trim()) {
       return res.status(400).json({ error: 'Poll title is required' });
@@ -96,19 +108,21 @@ router.post('/', (req, res) => {
     }
 
     const pollId = generateId();
+    const quizModeVal = (is_quiz_mode || isQuizMode) ? 1 : 0;
 
     const insertTransaction = db.transaction(() => {
       let firstQuestionId = null;
 
       db.prepare(`
-        INSERT INTO polls (id, code, user_id, title, description, status, current_question_id, voting_open, show_results, qa_enabled, qa_moderation)
-        VALUES (?, ?, ?, ?, ?, 'draft', NULL, 1, 1, ?, ?)
+        INSERT INTO polls (id, code, user_id, title, description, status, current_question_id, voting_open, show_results, is_quiz_mode, qa_enabled, qa_moderation)
+        VALUES (?, ?, ?, ?, ?, 'draft', NULL, 1, 1, ?, ?, ?)
       `).run(
         pollId,
         pollCode,
         req.user.id,
         title.trim(),
         description ? description.trim() : null,
+        quizModeVal,
         qa_enabled ? 1 : 0,
         qa_moderation ? 1 : 0
       );
@@ -200,6 +214,8 @@ router.get('/:id', (req, res) => {
         voting_open: Boolean(poll.voting_open),
         show_results: Boolean(poll.show_results),
         show_correct_answer: Boolean(poll.show_correct_answer),
+        is_quiz_mode: Boolean(poll.is_quiz_mode),
+        show_leaderboard: Boolean(poll.show_leaderboard),
         qa_enabled: Boolean(poll.qa_enabled),
         qa_moderation: Boolean(poll.qa_moderation)
       },
@@ -224,7 +240,16 @@ router.put('/:id', (req, res) => {
     if (!poll) return res.status(404).json({ error: 'Poll not found' });
     if (poll === 'UNAUTHORIZED') return res.status(403).json({ error: 'Unauthorized access to this poll' });
 
-    const { title, description, code: customCode, qa_enabled, qa_moderation, questions } = req.body;
+    const {
+      title,
+      description,
+      code: customCode,
+      qa_enabled,
+      qa_moderation,
+      is_quiz_mode,
+      isQuizMode,
+      questions
+    } = req.body;
 
     let pollCode = (customCode || poll.code).trim().toUpperCase();
     if (pollCode !== poll.code) {
@@ -237,12 +262,17 @@ router.put('/:id', (req, res) => {
       }
     }
 
+    const quizModeVal = (is_quiz_mode !== undefined || isQuizMode !== undefined)
+      ? ((is_quiz_mode || isQuizMode) ? 1 : 0)
+      : poll.is_quiz_mode;
+
     const updateTx = db.transaction(() => {
       db.prepare(`
         UPDATE polls SET
           title = ?,
           description = ?,
           code = ?,
+          is_quiz_mode = ?,
           qa_enabled = ?,
           qa_moderation = ?
         WHERE id = ?
@@ -250,6 +280,7 @@ router.put('/:id', (req, res) => {
         title !== undefined ? title.trim() : poll.title,
         description !== undefined ? (description ? description.trim() : null) : poll.description,
         pollCode,
+        quizModeVal,
         qa_enabled !== undefined ? (qa_enabled ? 1 : 0) : poll.qa_enabled,
         qa_moderation !== undefined ? (qa_moderation ? 1 : 0) : poll.qa_moderation,
         poll.id
@@ -368,14 +399,15 @@ router.post('/:id/duplicate', (req, res) => {
 
     const dupTx = db.transaction(() => {
       db.prepare(`
-        INSERT INTO polls (id, code, user_id, title, description, status, current_question_id, voting_open, show_results, qa_enabled, qa_moderation)
-        VALUES (?, ?, ?, ?, ?, 'draft', NULL, 1, 1, ?, ?)
+        INSERT INTO polls (id, code, user_id, title, description, status, current_question_id, voting_open, show_results, is_quiz_mode, qa_enabled, qa_moderation)
+        VALUES (?, ?, ?, ?, ?, 'draft', NULL, 1, 1, ?, ?, ?)
       `).run(
         newPollId,
         newCode,
         targetUserId,
         `Copy of ${originalPoll.title}`,
         originalPoll.description,
+        originalPoll.is_quiz_mode || 0,
         originalPoll.qa_enabled,
         originalPoll.qa_moderation
       );
@@ -583,13 +615,16 @@ router.get('/:id/analytics', (req, res) => {
       qaCount: qaQuestions.length
     };
 
+    const leaderboard = poll.is_quiz_mode === 1 ? computePollLeaderboard(poll.id) : [];
+
     res.json({
       poll,
       stats,
       totalVotes,
       totalParticipants,
       questions: questionsAnalytics,
-      qaQuestions
+      qaQuestions,
+      leaderboard
     });
   } catch (err) {
     console.error('[Poll Analytics Error]', err);
@@ -607,24 +642,67 @@ router.get('/:id/export', (req, res) => {
     if (!poll) return res.status(404).json({ error: 'Poll not found' });
     if (poll === 'UNAUTHORIZED') return res.status(403).json({ error: 'Unauthorized' });
 
-    const votes = db.prepare(`
-      SELECT 
-        v.id as vote_id,
-        q.order_num as question_number,
-        q.question_text,
-        q.question_type,
-        v.value as response_value,
-        v.participant_id,
-        v.created_at as voted_at
-      FROM poll_votes v
-      JOIN poll_questions q ON v.question_id = q.id
-      WHERE v.poll_id = ?
-      ORDER BY q.order_num ASC, v.created_at ASC
-    `).all(poll.id);
+    let csv;
+    if (poll.is_quiz_mode === 1) {
+      const votes = db.prepare(`
+        SELECT 
+          v.id as vote_id,
+          COALESCE(pp.name, 'Anonymous') as participant_name,
+          COALESCE(pp.avatar, '') as participant_avatar,
+          q.order_num as question_number,
+          q.question_text,
+          q.question_type,
+          v.value as response_value,
+          COALESCE(q.correct_answer, '') as correct_answer,
+          CASE 
+            WHEN q.correct_answer IS NOT NULL AND TRIM(q.correct_answer) != '' AND LOWER(TRIM(v.value)) = LOWER(TRIM(q.correct_answer)) THEN 'CORRECT'
+            WHEN q.correct_answer IS NOT NULL AND TRIM(q.correct_answer) != '' THEN 'INCORRECT'
+            ELSE 'N/A'
+          END as result_status,
+          v.participant_id,
+          v.created_at as voted_at
+        FROM poll_votes v
+        JOIN poll_questions q ON v.question_id = q.id
+        LEFT JOIN poll_participants pp ON pp.participant_id = v.participant_id AND pp.poll_id = v.poll_id
+        WHERE v.poll_id = ?
+        ORDER BY q.order_num ASC, v.created_at ASC
+      `).all(poll.id);
 
-    const fields = ['vote_id', 'question_number', 'question_text', 'question_type', 'response_value', 'participant_id', 'voted_at'];
-    const json2csvParser = new Parser({ fields });
-    const csv = json2csvParser.parse(votes);
+      const fields = [
+        'vote_id',
+        'participant_name',
+        'participant_avatar',
+        'question_number',
+        'question_text',
+        'question_type',
+        'response_value',
+        'correct_answer',
+        'result_status',
+        'participant_id',
+        'voted_at'
+      ];
+      const json2csvParser = new Parser({ fields });
+      csv = json2csvParser.parse(votes);
+    } else {
+      const votes = db.prepare(`
+        SELECT 
+          v.id as vote_id,
+          q.order_num as question_number,
+          q.question_text,
+          q.question_type,
+          v.value as response_value,
+          v.participant_id,
+          v.created_at as voted_at
+        FROM poll_votes v
+        JOIN poll_questions q ON v.question_id = q.id
+        WHERE v.poll_id = ?
+        ORDER BY q.order_num ASC, v.created_at ASC
+      `).all(poll.id);
+
+      const fields = ['vote_id', 'question_number', 'question_text', 'question_type', 'response_value', 'participant_id', 'voted_at'];
+      const json2csvParser = new Parser({ fields });
+      csv = json2csvParser.parse(votes);
+    }
 
     res.header('Content-Type', 'text/csv');
     res.attachment(`poll-${poll.code}-results.csv`);

@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../config/db');
 const { generateId } = require('../utils/id');
-const { computeQuestionResults, getIO, getPollState } = require('../services/pollSocket');
+const { computeQuestionResults, getIO, getPollState, computePollLeaderboard } = require('../services/pollSocket');
 
 const router = express.Router();
 
@@ -98,12 +98,19 @@ router.post('/:id/vote', (req, res) => {
         .map(w => w.trim())
         .filter(Boolean);
 
+      const existingVotes = db.prepare('SELECT value FROM poll_votes WHERE question_id = ? AND participant_id = ?').all(questionId, participantId);
+      const existingWordSet = new Set(existingVotes.map(v => v.value.trim().toLowerCase()));
+
       const insertVote = db.prepare(`
         INSERT INTO poll_votes (id, poll_id, question_id, participant_id, value)
         VALUES (?, ?, ?, ?, ?)
       `);
       words.forEach(w => {
-        insertVote.run(generateId(), pollId, questionId, participantId, w);
+        const lower = w.toLowerCase();
+        if (!existingWordSet.has(lower)) {
+          existingWordSet.add(lower);
+          insertVote.run(generateId(), pollId, questionId, participantId, w);
+        }
       });
     } else {
       // Single vote upsert
@@ -127,12 +134,55 @@ router.post('/:id/vote', (req, res) => {
         results: (poll.show_results === 1) ? results : null,
         totalVotes: results.totalVotes
       });
+
+      if (poll.is_quiz_mode === 1) {
+        const leaderboard = computePollLeaderboard(pollId);
+        io.to(`poll:${pollId}`).emit('poll:leaderboard_update', { leaderboard });
+      }
     }
 
     res.json({ success: true, results: (poll.show_results === 1) ? results : null });
   } catch (err) {
     console.error('[Public Poll Vote Error]', err);
     res.status(500).json({ error: 'Failed to record vote' });
+  }
+});
+
+/**
+ * POST /api/public/polls/:id/register-participant
+ * Register participant name & avatar for Quiz Mode
+ */
+router.post('/:id/register-participant', (req, res) => {
+  try {
+    const pollId = req.params.id;
+    const { participantId, name, avatar } = req.body;
+    if (!participantId) {
+      return res.status(400).json({ error: 'Participant ID is required' });
+    }
+
+    const cleanName = String(name || 'Player').trim().slice(0, 30) || 'Player';
+    const cleanAvatar = String(avatar || '🚀').trim().slice(0, 8) || '🚀';
+
+    const existing = db.prepare('SELECT id FROM poll_participants WHERE poll_id = ? AND participant_id = ?').get(pollId, participantId);
+    if (existing) {
+      db.prepare('UPDATE poll_participants SET name = ?, avatar = ? WHERE id = ?').run(cleanName, cleanAvatar, existing.id);
+    } else {
+      db.prepare(`
+        INSERT INTO poll_participants (id, poll_id, participant_id, name, avatar, score)
+        VALUES (?, ?, ?, ?, ?, 0)
+      `).run(generateId(), pollId, participantId, cleanName, cleanAvatar);
+    }
+
+    const leaderboard = computePollLeaderboard(pollId);
+    const io = getIO();
+    if (io) {
+      io.to(`poll:${pollId}`).emit('poll:leaderboard_update', { leaderboard });
+    }
+
+    res.json({ success: true, profile: { name: cleanName, avatar: cleanAvatar }, leaderboard });
+  } catch (err) {
+    console.error('[Register Participant Error]', err);
+    res.status(500).json({ error: 'Failed to register quiz participant' });
   }
 });
 

@@ -102,6 +102,8 @@ function initSchema() {
       voting_open INTEGER DEFAULT 1,
       show_results INTEGER DEFAULT 1,
       show_correct_answer INTEGER DEFAULT 0,
+      is_quiz_mode INTEGER DEFAULT 0,
+      show_leaderboard INTEGER DEFAULT 0,
       qa_enabled INTEGER DEFAULT 1,
       qa_moderation INTEGER DEFAULT 0,
       show_qa_on_screen INTEGER DEFAULT 0,
@@ -156,6 +158,18 @@ function initSchema() {
       FOREIGN KEY (qa_question_id) REFERENCES poll_qa_questions(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS poll_participants (
+      id TEXT PRIMARY KEY,
+      poll_id TEXT NOT NULL,
+      participant_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      avatar TEXT DEFAULT '🚀',
+      score INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(poll_id, participant_id),
+      FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_surveys_user ON surveys(user_id);
     CREATE INDEX IF NOT EXISTS idx_password_resets_token ON password_resets(token_hash);
     CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id);
@@ -172,6 +186,8 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_poll_votes_poll ON poll_votes(poll_id);
     CREATE INDEX IF NOT EXISTS idx_poll_qa_poll ON poll_qa_questions(poll_id);
     CREATE INDEX IF NOT EXISTS idx_poll_qa_upvotes ON poll_qa_upvotes(qa_question_id);
+    CREATE INDEX IF NOT EXISTS idx_poll_participants_poll ON poll_participants(poll_id);
+    CREATE INDEX IF NOT EXISTS idx_poll_participants_user ON poll_participants(poll_id, participant_id);
   `);
 
   // Migrate surveys table to add email_notifications column if missing
@@ -238,6 +254,20 @@ function initSchema() {
   // Ensure show_correct_answer column exists on polls table
   try {
     db.exec(`ALTER TABLE polls ADD COLUMN show_correct_answer INTEGER DEFAULT 0`);
+  } catch (e) {
+    // Column already exists
+  }
+
+  // Ensure is_quiz_mode column exists on polls table
+  try {
+    db.exec(`ALTER TABLE polls ADD COLUMN is_quiz_mode INTEGER DEFAULT 0`);
+  } catch (e) {
+    // Column already exists
+  }
+
+  // Ensure show_leaderboard column exists on polls table
+  try {
+    db.exec(`ALTER TABLE polls ADD COLUMN show_leaderboard INTEGER DEFAULT 0`);
   } catch (e) {
     // Column already exists
   }

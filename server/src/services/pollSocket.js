@@ -120,6 +120,53 @@ function getActiveVoterCount(pollId) {
   return new Set(pollVoters.get(pollId).values()).size;
 }
 
+function computePollLeaderboard(pollId) {
+  try {
+    const rows = db.prepare(`
+      SELECT
+        p.participant_id,
+        p.name,
+        p.avatar,
+        COUNT(q.id) as score
+      FROM poll_participants p
+      LEFT JOIN poll_votes v ON v.participant_id = p.participant_id AND v.poll_id = p.poll_id
+      LEFT JOIN poll_questions q ON q.id = v.question_id 
+        AND q.correct_answer IS NOT NULL 
+        AND TRIM(q.correct_answer) != '' 
+        AND LOWER(TRIM(v.value)) = LOWER(TRIM(q.correct_answer))
+      WHERE p.poll_id = ?
+      GROUP BY p.participant_id
+      ORDER BY score DESC, p.created_at ASC
+    `).all(pollId);
+
+    // Persist scores onto poll_participants table
+    const updateScoreStmt = db.prepare('UPDATE poll_participants SET score = ? WHERE poll_id = ? AND participant_id = ?');
+    const updateScoresTx = db.transaction((items) => {
+      for (const item of items) {
+        updateScoreStmt.run(item.score, pollId, item.participant_id);
+      }
+    });
+    updateScoresTx(rows);
+
+    let currentRank = 1;
+    return rows.map((r, idx) => {
+      if (idx > 0 && r.score < rows[idx - 1].score) {
+        currentRank = idx + 1;
+      }
+      return {
+        participantId: r.participant_id,
+        name: r.name,
+        avatar: r.avatar || '🚀',
+        score: r.score,
+        rank: currentRank
+      };
+    });
+  } catch (err) {
+    console.error('[Leaderboard Calculation Error]', err);
+    return [];
+  }
+}
+
 function getPollState(pollId, participantId = null, isHost = false) {
   const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
   if (!poll) return null;
@@ -151,6 +198,13 @@ function getPollState(pollId, participantId = null, isHost = false) {
 
   const participantCount = getActiveVoterCount(pollId);
 
+  let quizProfile = null;
+  if (participantId) {
+    quizProfile = db.prepare('SELECT name, avatar, score FROM poll_participants WHERE poll_id = ? AND participant_id = ?').get(pollId, participantId) || null;
+  }
+
+  const leaderboard = poll.is_quiz_mode === 1 ? computePollLeaderboard(pollId) : [];
+
   return {
     poll: {
       id: poll.id,
@@ -162,6 +216,8 @@ function getPollState(pollId, participantId = null, isHost = false) {
       voting_open: Boolean(poll.voting_open),
       show_results: Boolean(poll.show_results),
       show_correct_answer: Boolean(poll.show_correct_answer),
+      is_quiz_mode: Boolean(poll.is_quiz_mode),
+      show_leaderboard: Boolean(poll.show_leaderboard),
       qa_enabled: Boolean(poll.qa_enabled),
       qa_moderation: Boolean(poll.qa_moderation),
       show_qa_on_screen: Boolean(poll.show_qa_on_screen),
@@ -189,7 +245,9 @@ function getPollState(pollId, participantId = null, isHost = false) {
     hasVoted: userVotes.length > 0,
     qaQuestions,
     userUpvotes,
-    participantCount
+    participantCount,
+    quizProfile,
+    leaderboard
   };
 }
 
@@ -272,12 +330,19 @@ function initPollSocket(httpServer) {
             .map(w => w.trim())
             .filter(Boolean);
 
+          const existingVotes = db.prepare('SELECT value FROM poll_votes WHERE question_id = ? AND participant_id = ?').all(questionId, participantId);
+          const existingWordSet = new Set(existingVotes.map(v => v.value.trim().toLowerCase()));
+
           const insertVote = db.prepare(`
             INSERT INTO poll_votes (id, poll_id, question_id, participant_id, value)
             VALUES (?, ?, ?, ?, ?)
           `);
           words.forEach(w => {
-            insertVote.run(generateId(), pollId, questionId, participantId, w);
+            const lower = w.toLowerCase();
+            if (!existingWordSet.has(lower)) {
+              existingWordSet.add(lower);
+              insertVote.run(generateId(), pollId, questionId, participantId, w);
+            }
           });
         } else {
           // Single vote upsert
@@ -306,6 +371,12 @@ function initPollSocket(httpServer) {
           results: (poll.show_results === 1) ? results : null,
           totalVotes: results.totalVotes
         });
+
+        // If in quiz mode, update and broadcast leaderboard
+        if (poll.is_quiz_mode === 1) {
+          const leaderboard = computePollLeaderboard(pollId);
+          io.to(`poll:${pollId}`).emit('poll:leaderboard_update', { leaderboard });
+        }
       } catch (err) {
         console.error('[Socket Vote Error]', err);
         socket.emit('poll:error', { message: 'Failed to record vote' });
@@ -327,9 +398,40 @@ function initPollSocket(httpServer) {
             results: (poll.show_results === 1) ? results : null,
             totalVotes: results.totalVotes
           });
+
+          if (poll.is_quiz_mode === 1) {
+            const leaderboard = computePollLeaderboard(pollId);
+            io.to(`poll:${pollId}`).emit('poll:leaderboard_update', { leaderboard });
+          }
         }
       } catch (err) {
         console.error('[Socket Remove Word Error]', err);
+      }
+    });
+
+    socket.on('poll:register_quiz_participant', ({ pollId, participantId, name, avatar }) => {
+      try {
+        const cleanName = String(name || 'Player').trim().slice(0, 30) || 'Player';
+        const cleanAvatar = String(avatar || '🚀').trim().slice(0, 8) || '🚀';
+
+        const existing = db.prepare('SELECT id FROM poll_participants WHERE poll_id = ? AND participant_id = ?').get(pollId, participantId);
+        if (existing) {
+          db.prepare('UPDATE poll_participants SET name = ?, avatar = ? WHERE id = ?').run(cleanName, cleanAvatar, existing.id);
+        } else {
+          db.prepare(`
+            INSERT INTO poll_participants (id, poll_id, participant_id, name, avatar, score)
+            VALUES (?, ?, ?, ?, ?, 0)
+          `).run(generateId(), pollId, participantId, cleanName, cleanAvatar);
+        }
+
+        const leaderboard = computePollLeaderboard(pollId);
+        const myProfile = { name: cleanName, avatar: cleanAvatar };
+
+        socket.emit('poll:quiz_profile_confirmed', myProfile);
+        io.to(`poll:${pollId}`).emit('poll:leaderboard_update', { leaderboard });
+      } catch (err) {
+        console.error('[Register Quiz Participant Error]', err);
+        socket.emit('poll:error', { message: 'Failed to register quiz profile' });
       }
     });
 
@@ -436,10 +538,27 @@ function initPollSocket(httpServer) {
       }
     });
 
+    socket.on('poll:host_toggle_leaderboard', ({ pollId, show_leaderboard }) => {
+      try {
+        const val = show_leaderboard ? 1 : 0;
+        db.prepare('UPDATE polls SET show_leaderboard = ? WHERE id = ?').run(val, pollId);
+        const leaderboard = computePollLeaderboard(pollId);
+        io.to(`poll:${pollId}`).emit('poll:leaderboard_toggled', {
+          show_leaderboard: Boolean(val),
+          leaderboard
+        });
+      } catch (err) {
+        console.error('[Socket Host Toggle Leaderboard Error]', err);
+      }
+    });
+
     socket.on('poll:host_change_status', ({ pollId, status }) => {
       try {
         const closedAt = status === 'closed' ? new Date().toISOString() : null;
         db.prepare('UPDATE polls SET status = ?, closed_at = ? WHERE id = ?').run(status, closedAt, pollId);
+        if (status === 'closed') {
+          computePollLeaderboard(pollId);
+        }
         io.to(`poll:${pollId}`).emit('poll:status_changed', { status });
       } catch (err) {
         console.error('[Socket Host Change Status Error]', err);
@@ -556,5 +675,6 @@ module.exports = {
   initPollSocket,
   getIO,
   computeQuestionResults,
+  computePollLeaderboard,
   getPollState
 };

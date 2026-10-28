@@ -20,7 +20,8 @@ import {
   Check,
   CheckCircle2,
   RefreshCw,
-  Copy
+  Copy,
+  Trophy
 } from 'lucide-react';
 
 const QUESTION_TYPES = [
@@ -59,6 +60,7 @@ export default function PollBuilder() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [code, setCode] = useState('');
+  const [isQuizMode, setIsQuizMode] = useState(false);
   const [qaEnabled, setQaEnabled] = useState(true);
   const [qaModeration, setQaModeration] = useState(false);
 
@@ -88,6 +90,7 @@ export default function PollBuilder() {
           setTitle(p.title || '');
           setDescription(p.description || '');
           setCode(p.code || '');
+          setIsQuizMode(Boolean(p.is_quiz_mode));
           setQaEnabled(Boolean(p.qa_enabled));
           setQaModeration(Boolean(p.qa_moderation));
 
@@ -251,6 +254,7 @@ export default function PollBuilder() {
       title: title.trim(),
       description: description.trim(),
       code: code.trim().toUpperCase(),
+      is_quiz_mode: isQuizMode,
       qa_enabled: qaEnabled,
       qa_moderation: qaModeration,
       questions: questions.map((q) => ({
@@ -418,15 +422,44 @@ export default function PollBuilder() {
             </div>
           </div>
 
-          {/* Q&A Settings */}
-          <div className="mt-6 pt-6 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <label className="flex items-start space-x-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors">
+          {/* Quiz Mode & Q&A Settings */}
+          <div className="mt-6 pt-6 border-t border-slate-100 space-y-4">
+            {/* Quiz Mode Banner Toggle */}
+            <label className={`flex items-start space-x-3.5 p-4 rounded-2xl border-2 cursor-pointer transition-all ${
+              isQuizMode
+                ? 'border-indigo-600 bg-indigo-50/60 shadow-xs'
+                : 'border-slate-200 hover:bg-slate-50'
+            }`}>
               <input
                 type="checkbox"
-                checked={qaEnabled}
-                onChange={(e) => setQaEnabled(e.target.checked)}
+                checked={isQuizMode}
+                onChange={(e) => setIsQuizMode(e.target.checked)}
                 className="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
               />
+              <div className="flex-1">
+                <div className="flex items-center space-x-2">
+                  <Trophy className={`w-4 h-4 ${isQuizMode ? 'text-indigo-600' : 'text-slate-400'}`} />
+                  <span className="text-sm font-bold text-slate-900">
+                    Enable Quiz Mode (Player Names, Avatars & Leaderboard)
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 uppercase tracking-wider">
+                    Interactive Quiz
+                  </span>
+                </div>
+                <span className="text-xs text-slate-500 mt-1 block leading-relaxed">
+                  Participants must choose a nickname and avatar before viewing questions. Answers with a designated correct answer score points toward a live leaderboard that the host can display.
+                </span>
+              </div>
+            </label>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <label className="flex items-start space-x-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors">
+                <input
+                  type="checkbox"
+                  checked={qaEnabled}
+                  onChange={(e) => setQaEnabled(e.target.checked)}
+                  className="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                />
               <div>
                 <span className="text-sm font-semibold text-slate-900 block">
                   Enable Audience Q&A
@@ -456,6 +489,7 @@ export default function PollBuilder() {
             </label>
           </div>
         </div>
+      </div>
 
         {/* Questions Header */}
         <div className="flex items-center justify-between pt-2">

@@ -243,6 +243,10 @@ export const publicPollApi = {
     const res = await api.post(`/public/polls/${id}/remove-word`, data);
     return res.data;
   },
+  registerParticipant: async (id, data) => {
+    const res = await api.post(`/public/polls/${id}/register-participant`, data);
+    return res.data;
+  },
 };
 
 export default api;

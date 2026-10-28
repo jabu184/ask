@@ -18,8 +18,11 @@ import {
   AlertCircle,
   HelpCircle,
   Sparkles,
-  X
+  X,
+  Trophy
 } from 'lucide-react';
+
+const QUIZ_AVATARS = ['🚀', '🦁', '🦊', '🐼', '🐨', '🦄', '⚡', '🎯', '🌟', '🐬', '🦉', '👑'];
 
 function getParticipantId() {
   let id = localStorage.getItem('ask_participant_id');
@@ -50,6 +53,22 @@ export default function PublicPoll() {
   const [votingOpen, setVotingOpen] = useState(true);
   const [showResults, setShowResults] = useState(true);
   const [participantCount, setParticipantCount] = useState(1);
+
+  // Quiz Mode state
+  const [isQuizMode, setIsQuizMode] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [quizProfile, setQuizProfile] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ask_quiz_' + code);
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+  const [quizName, setQuizName] = useState('');
+  const [quizAvatar, setQuizAvatar] = useState('🚀');
+  const [submittingQuizProfile, setSubmittingQuizProfile] = useState(false);
 
   // Form inputs for voting
   const [textInput, setTextInput] = useState('');
@@ -89,6 +108,15 @@ export default function PublicPoll() {
         setMyWords(initial.userVotes || []);
         setShowCorrectAnswer(Boolean(initial.poll?.show_correct_answer));
         setCorrectAnswer(initial.currentQuestion?.correct_answer || null);
+        setIsQuizMode(Boolean(initial.poll?.is_quiz_mode));
+        setShowLeaderboard(Boolean(initial.poll?.show_leaderboard));
+        setLeaderboard(initial.leaderboard || []);
+        if (initial.quizProfile) {
+          setQuizProfile(initial.quizProfile);
+          try {
+            localStorage.setItem('ask_quiz_' + code, JSON.stringify(initial.quizProfile));
+          } catch (e) {}
+        }
         setVotingOpen(initial.poll.voting_open);
         setShowResults(initial.poll.show_results);
         setQaQuestions(initial.qaQuestions || []);
@@ -108,6 +136,22 @@ export default function PublicPoll() {
           isHost: false
         });
 
+        // If local profile already existed but not returned by server yet, auto register with socket
+        try {
+          const saved = localStorage.getItem('ask_quiz_' + code);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed && parsed.name) {
+              socket.emit('poll:register_quiz_participant', {
+                pollId: initial.poll.id,
+                participantId,
+                name: parsed.name,
+                avatar: parsed.avatar || '🚀'
+              });
+            }
+          }
+        } catch (e) {}
+
         socket.on('poll:state', (state) => {
           if (!state) return;
           setPoll(state.poll);
@@ -119,8 +163,21 @@ export default function PublicPoll() {
           if (state.poll && typeof state.poll.show_correct_answer !== 'undefined') {
             setShowCorrectAnswer(Boolean(state.poll.show_correct_answer));
           }
+          if (state.poll && typeof state.poll.is_quiz_mode !== 'undefined') {
+            setIsQuizMode(Boolean(state.poll.is_quiz_mode));
+          }
+          if (state.poll && typeof state.poll.show_leaderboard !== 'undefined') {
+            setShowLeaderboard(Boolean(state.poll.show_leaderboard));
+          }
           if (state.currentQuestion) {
             setCorrectAnswer(state.currentQuestion.correct_answer || null);
+          }
+          if (state.leaderboard) setLeaderboard(state.leaderboard);
+          if (state.quizProfile) {
+            setQuizProfile(state.quizProfile);
+            try {
+              localStorage.setItem('ask_quiz_' + code, JSON.stringify(state.quizProfile));
+            } catch (e) {}
           }
           setVotingOpen(state.poll.voting_open);
           setShowResults(state.poll.show_results);
@@ -187,6 +244,35 @@ export default function PublicPoll() {
           setHasVoted(true);
           setUserVote(data.value);
           setSubmittingVote(false);
+        });
+
+        socket.on('poll:quiz_profile_confirmed', (profile) => {
+          setQuizProfile(profile);
+          try {
+            localStorage.setItem('ask_quiz_' + code, JSON.stringify(profile));
+          } catch (e) {}
+          setSubmittingQuizProfile(false);
+        });
+
+        socket.on('poll:leaderboard_toggled', ({ show_leaderboard, leaderboard: lb }) => {
+          setShowLeaderboard(Boolean(show_leaderboard));
+          if (lb) {
+            setLeaderboard(lb);
+            const me = lb.find((p) => p.participant_id === participantId);
+            if (me) {
+              setQuizProfile((prev) => (prev ? { ...prev, score: me.score } : me));
+            }
+          }
+        });
+
+        socket.on('poll:leaderboard_update', ({ leaderboard: lb }) => {
+          if (lb) {
+            setLeaderboard(lb);
+            const me = lb.find((p) => p.participant_id === participantId);
+            if (me) {
+              setQuizProfile((prev) => (prev ? { ...prev, score: me.score } : me));
+            }
+          }
         });
 
         // Q&A Events
@@ -332,6 +418,47 @@ export default function PublicPoll() {
     }
   };
 
+  // Handle Quiz Mode Participant Registration
+  const handleRegisterQuizParticipant = async (e) => {
+    if (e) e.preventDefault();
+    const trimmed = quizName.trim();
+    if (!trimmed || submittingQuizProfile) return;
+    setSubmittingQuizProfile(true);
+
+    const profileData = {
+      name: trimmed,
+      avatar: quizAvatar || '🚀',
+      participant_id: participantId,
+      score: 0
+    };
+
+    setQuizProfile(profileData);
+    try {
+      localStorage.setItem('ask_quiz_' + code, JSON.stringify(profileData));
+    } catch (err) {}
+
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('poll:register_quiz_participant', {
+        pollId: poll.id,
+        participantId,
+        name: trimmed,
+        avatar: quizAvatar || '🚀'
+      });
+    }
+
+    try {
+      await publicPollApi.registerParticipant(poll.id, {
+        participantId,
+        name: trimmed,
+        avatar: quizAvatar || '🚀'
+      });
+    } catch (err) {
+      console.error('Participant registration sync error', err);
+    } finally {
+      setSubmittingQuizProfile(false);
+    }
+  };
+
   // Handle Q&A submit
   const handleQaSubmit = (e) => {
     e.preventDefault();
@@ -446,6 +573,15 @@ export default function PublicPoll() {
           </div>
 
           <div className="flex items-center gap-2">
+            {isQuizMode && quizProfile && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs">
+                <span className="text-base">{quizProfile.avatar || '🚀'}</span>
+                <span className="truncate max-w-[90px]">{quizProfile.name}</span>
+                <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-amber-950 font-black text-[10px]">
+                  {quizProfile.score || 0} pts
+                </span>
+              </div>
+            )}
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold">
               <Users className="w-3.5 h-3.5 text-slate-500" />
               <span>{participantCount}</span>
@@ -494,7 +630,71 @@ export default function PublicPoll() {
              LIVE POLL TAB
              ============================================================== */
           <div className="space-y-6 flex-1 flex flex-col">
-            {isPollClosed ? (
+            {isQuizMode && !quizProfile ? (
+              /* ==============================================================
+                 QUIZ MODE ONBOARDING (Name + Avatar Picker)
+                 ============================================================== */
+              <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm my-auto animate-fadeIn">
+                <div className="w-14 h-14 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200 shadow-2xs">
+                  <Trophy className="w-7 h-7 text-amber-500" />
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 text-center tracking-tight mb-1">
+                  Welcome to the Live Quiz!
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-500 text-center mb-6">
+                  Enter your nickname and choose your avatar to join the competition.
+                </p>
+
+                <form onSubmit={handleRegisterQuizParticipant} className="space-y-5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
+                      Your Player Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={30}
+                      value={quizName}
+                      onChange={(e) => setQuizName(e.target.value)}
+                      placeholder="e.g. Alex M."
+                      className="w-full px-4 py-3.5 rounded-2xl border-2 border-slate-200 focus:border-amber-500 focus:ring-0 text-base font-semibold text-slate-900 placeholder:text-slate-400 shadow-2xs"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
+                      Choose Your Avatar
+                    </label>
+                    <div className="grid grid-cols-6 gap-2 pt-1">
+                      {QUIZ_AVATARS.map((av) => (
+                        <button
+                          key={av}
+                          type="button"
+                          onClick={() => setQuizAvatar(av)}
+                          className={`h-12 rounded-2xl text-2xl flex items-center justify-center border-2 transition active:scale-95 ${
+                            quizAvatar === av
+                              ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-400/30 shadow-xs'
+                              : 'border-slate-200 bg-white hover:border-amber-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          {av}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={!quizName.trim() || submittingQuizProfile}
+                    className="w-full py-3.5 px-4 rounded-2xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-extrabold text-base shadow-sm shadow-amber-500/20 transition active:scale-98 flex items-center justify-center space-x-2"
+                  >
+                    <span>{submittingQuizProfile ? 'Joining Quiz...' : 'Join Quiz & Start Playing'}</span>
+                    <span className="text-lg">🚀</span>
+                  </button>
+                </form>
+              </div>
+            ) : isPollClosed ? (
               <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center shadow-xs my-auto">
                 <div className="w-14 h-14 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <CheckCircle2 className="w-8 h-8 text-emerald-500" />
@@ -536,7 +736,54 @@ export default function PublicPoll() {
                 </p>
               </div>
             ) : (
-              <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm flex flex-col">
+              <div className="space-y-6">
+                {/* Live Quiz Leaderboard Overlay/Banner when toggled on by host */}
+                {showLeaderboard && (
+                  <div className="bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-3xl p-5 shadow-sm border border-amber-400 animate-fadeIn space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Trophy className="w-5 h-5 text-amber-200" />
+                        <h3 className="font-black text-sm uppercase tracking-wider">Live Quiz Leaderboard</h3>
+                      </div>
+                      {quizProfile && (
+                        <span className="text-xs bg-amber-700/60 text-white px-2.5 py-0.5 rounded-full font-bold">
+                          Your Score: {quizProfile.score || 0} pts
+                        </span>
+                      )}
+                    </div>
+
+                    {leaderboard.length === 0 ? (
+                      <p className="text-xs text-amber-100">Scores will update as questions are answered!</p>
+                    ) : (
+                      <div className="space-y-1.5 pt-1">
+                        {leaderboard.slice(0, 5).map((player, idx) => {
+                          const isMe = player.participant_id === participantId;
+                          return (
+                            <div
+                              key={player.participant_id || idx}
+                              className={`p-2 rounded-xl text-xs flex items-center justify-between font-semibold ${
+                                isMe
+                                  ? 'bg-white text-slate-950 font-black shadow-xs ring-2 ring-amber-300'
+                                  : 'bg-amber-700/40 text-amber-50'
+                              }`}
+                            >
+                              <div className="flex items-center space-x-2 truncate">
+                                <span className="w-5 text-center font-bold">
+                                  {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
+                                </span>
+                                <span className="text-base">{player.avatar || '🚀'}</span>
+                                <span className="truncate">{player.name} {isMe ? '(You)' : ''}</span>
+                              </div>
+                              <span className="font-black ml-2 whitespace-nowrap">{player.score} {player.score === 1 ? 'pt' : 'pts'}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm flex flex-col">
                 {/* Question Header */}
                 <div className="mb-6">
                   <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
@@ -694,8 +941,12 @@ export default function PublicPoll() {
                           <form
                             onSubmit={(e) => {
                               e.preventDefault();
-                              if (textInput.trim()) {
-                                handleVote(textInput.trim());
+                              const trimmed = textInput.trim();
+                              if (trimmed) {
+                                const isDuplicate = myWords.some((w) => w.value.toLowerCase() === trimmed.toLowerCase());
+                                if (!isDuplicate) {
+                                  handleVote(trimmed);
+                                }
                                 setTextInput('');
                               }
                             }}
@@ -833,9 +1084,10 @@ export default function PublicPoll() {
                   </div>
                 )}
               </div>
-            )}
-          </div>
-        ) : (
+            </div>
+          )}
+        </div>
+      ) : (
           /* ==============================================================
              AUDIENCE Q&A TAB
              ============================================================== */
