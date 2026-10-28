@@ -517,13 +517,13 @@ export default function Dashboard() {
 
                     {/* Bottom Actions Bar */}
                     <div className="bg-slate-50 border-t border-slate-100 px-5 py-3 flex items-center justify-between gap-2">
-                      {/* Launch Host Studio */}
+                      {/* Live Controls */}
                       <Link
                         to={`/polls/${poll.id}/host`}
                         className="inline-flex items-center space-x-1.5 text-xs font-bold px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition"
                       >
                         <Play className="w-3 h-3 fill-white" />
-                        <span>Host Studio</span>
+                        <span>Live Controls</span>
                       </Link>
 
                       <div className="flex items-center space-x-1">

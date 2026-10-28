@@ -150,10 +150,13 @@ export default function App() {
                 </LayoutWithNavbar>
               }
             />
-            {/* Poll Host Studio is full-screen presenter cockpit */}
             <Route
               path="/polls/:id/host"
-              element={<PollHost />}
+              element={
+                <LayoutWithNavbar>
+                  <PollHost />
+                </LayoutWithNavbar>
+              }
             />
             <Route
               path="/polls/:id/analytics"

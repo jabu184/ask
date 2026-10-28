@@ -111,6 +111,14 @@ function getPollQA(pollId, isHost = false) {
   return db.prepare(query).all(pollId);
 }
 
+// Map<pollId, Map<socketId, participantId>> to count only active voting participants
+const pollVoters = new Map();
+
+function getActiveVoterCount(pollId) {
+  if (!pollVoters.has(pollId)) return 0;
+  return new Set(pollVoters.get(pollId).values()).size;
+}
+
 function getPollState(pollId, participantId = null, isHost = false) {
   const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
   if (!poll) return null;
@@ -139,8 +147,7 @@ function getPollState(pollId, participantId = null, isHost = false) {
     userUpvotes = db.prepare('SELECT qa_question_id FROM poll_qa_upvotes WHERE participant_id = ?').all(participantId).map(r => r.qa_question_id);
   }
 
-  const room = io ? io.sockets.adapter.rooms.get(`poll:${pollId}`) : null;
-  const participantCount = room ? room.size : 0;
+  const participantCount = getActiveVoterCount(pollId);
 
   return {
     poll: {
@@ -195,7 +202,7 @@ function initPollSocket(httpServer) {
     let currentParticipantId = null;
     let isSocketHost = false;
 
-    socket.on('poll:join', ({ pollId, participantId, isHost = false }) => {
+    socket.on('poll:join', ({ pollId, participantId, isHost = false, isPresenter = false }) => {
       if (!pollId) return;
 
       currentPollId = pollId;
@@ -205,14 +212,22 @@ function initPollSocket(httpServer) {
       const roomName = `poll:${pollId}`;
       socket.join(roomName);
 
+      // Only count actual voting participants (not host, not presenter screen)
+      const isVoter = !isHost && !isPresenter;
+      if (isVoter && participantId) {
+        if (!pollVoters.has(pollId)) {
+          pollVoters.set(pollId, new Map());
+        }
+        pollVoters.get(pollId).set(socket.id, participantId);
+      }
+
       // Send current state to joining socket
       const state = getPollState(pollId, participantId, isSocketHost);
       if (state) {
         socket.emit('poll:state', state);
 
-        // Broadcast participant count update
-        const room = io.sockets.adapter.rooms.get(roomName);
-        io.to(roomName).emit('poll:participant_count', { count: room ? room.size : 1 });
+        // Broadcast participant count update (only actual voting participants!)
+        io.to(roomName).emit('poll:participant_count', { count: getActiveVoterCount(pollId) });
       }
     });
 
@@ -421,9 +436,11 @@ function initPollSocket(httpServer) {
 
     socket.on('disconnect', () => {
       if (currentPollId) {
-        const roomName = `poll:${currentPollId}`;
-        const room = io.sockets.adapter.rooms.get(roomName);
-        io.to(roomName).emit('poll:participant_count', { count: room ? room.size : 0 });
+        if (pollVoters.has(currentPollId)) {
+          pollVoters.get(currentPollId).delete(socket.id);
+        }
+        const count = getActiveVoterCount(currentPollId);
+        io.to(`poll:${currentPollId}`).emit('poll:participant_count', { count });
       }
     });
   });

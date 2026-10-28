@@ -43,13 +43,6 @@ const QUESTION_TYPES = [
     desc: '1-5 or 1-10 star rating with score card',
     icon: Star,
     color: 'text-amber-600 bg-amber-50 border-amber-200'
-  },
-  {
-    type: 'text',
-    label: 'Open Text',
-    desc: 'Freeform participant thoughts & comments',
-    icon: MessageSquare,
-    color: 'text-emerald-600 bg-emerald-50 border-emerald-200'
   }
 ];
 
@@ -623,18 +616,6 @@ export default function PollBuilder() {
                       >
                         1 to 10 Stars
                       </button>
-                    </div>
-                  </div>
-                )}
-
-                {q.question_type === 'text' && (
-                  <div className="p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl flex items-center space-x-3 text-xs text-emerald-800">
-                    <MessageSquare className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-                    <div>
-                      <span className="font-semibold block">Open Text Response</span>
-                      <span className="text-emerald-600/80">
-                        Participants submit open-ended feedback and thoughts. Results will stream onto the host screen in real time.
-                      </span>
                     </div>
                   </div>
                 )}

@@ -479,40 +479,59 @@ export default function PublicPoll() {
                   </div>
                 )}
 
-                {/* Success Banner if Voted */}
+                {/* Response Status Banner */}
                 {hasVoted && (
                   <div className="mb-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-3 text-emerald-800 text-sm font-semibold animate-in fade-in">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                     <div className="flex-1">
-                      <p>Your response has been recorded!</p>
+                      <p>Your response is recorded!</p>
                       {userVote && (
                         <p className="text-xs text-emerald-700/80 font-normal mt-0.5">
-                          You chose: <strong className="font-bold">{userVote}</strong>
+                          Current choice: <strong className="font-bold">{userVote}</strong>
+                          {votingOpen && ' • Tap another option below anytime to change your answer'}
                         </p>
                       )}
                     </div>
                   </div>
                 )}
 
-                {/* Question Input Form / Options */}
-                {votingOpen && !hasVoted ? (
-                  <div className="space-y-3">
+                {/* Question Input Form / Options (Active whenever voting is open, allows changing vote) */}
+                {votingOpen ? (
+                  <div className="space-y-4">
                     {/* Multiple Choice */}
                     {currentQuestion.question_type === 'multiple_choice' && (
                       <div className="space-y-2.5">
-                        {currentQuestion.options?.map((opt, i) => (
-                          <button
-                            key={i}
-                            disabled={submittingVote}
-                            onClick={() => handleVote(opt)}
-                            className="w-full text-left p-4 rounded-2xl border-2 border-slate-200 hover:border-brand-500 hover:bg-brand-50/40 text-slate-800 font-semibold text-base transition-all active:scale-99 shadow-xs flex items-center justify-between group"
-                          >
-                            <span>{opt}</span>
-                            <span className="w-6 h-6 rounded-full border-2 border-slate-300 group-hover:border-brand-500 group-hover:bg-brand-500 flex items-center justify-center transition">
-                              <span className="w-2 h-2 rounded-full bg-white opacity-0 group-hover:opacity-100" />
-                            </span>
-                          </button>
-                        ))}
+                        {currentQuestion.options?.map((opt, i) => {
+                          const isSelected = String(userVote) === String(opt);
+                          return (
+                            <button
+                              key={i}
+                              disabled={submittingVote}
+                              onClick={() => handleVote(opt)}
+                              className={`w-full text-left p-4 rounded-2xl border-2 transition-all active:scale-99 shadow-xs flex items-center justify-between group ${
+                                isSelected
+                                  ? 'border-brand-600 bg-brand-50/70 text-brand-950 font-bold ring-2 ring-brand-500/20'
+                                  : 'border-slate-200 hover:border-brand-400 hover:bg-slate-50 text-slate-800 font-semibold'
+                              }`}
+                            >
+                              <div className="flex items-center space-x-3">
+                                <span className={`w-6 h-6 rounded-full border-2 text-xs font-bold flex items-center justify-center transition ${
+                                  isSelected
+                                    ? 'border-brand-600 bg-brand-600 text-white'
+                                    : 'border-slate-300 text-slate-500 group-hover:border-brand-400'
+                                }`}>
+                                  {isSelected ? '✓' : String.fromCharCode(65 + i)}
+                                </span>
+                                <span>{opt}</span>
+                              </div>
+                              {isSelected && (
+                                <span className="text-xs font-bold text-brand-600 px-2 py-0.5 rounded-full bg-brand-100">
+                                  Your Choice
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
 
@@ -521,20 +540,23 @@ export default function PublicPoll() {
                       <form
                         onSubmit={(e) => {
                           e.preventDefault();
-                          if (textInput.trim()) handleVote(textInput.trim());
+                          if (textInput.trim()) {
+                            handleVote(textInput.trim());
+                            setTextInput('');
+                          }
                         }}
                         className="space-y-4"
                       >
                         <div>
                           <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                            Enter your word or short phrase:
+                            {hasVoted ? 'Submit another or revised word:' : 'Enter your word or short phrase:'}
                           </label>
                           <input
                             type="text"
                             maxLength={35}
                             value={textInput}
                             onChange={(e) => setTextInput(e.target.value)}
-                            placeholder="e.g. Innovative, Fast, Collaboration..."
+                            placeholder="e.g. Innovative, Fast, Leadership..."
                             className="w-full px-4 py-3.5 rounded-2xl border-2 border-slate-200 focus:border-brand-500 focus:ring-0 text-base font-medium text-slate-900 placeholder:text-slate-400"
                             autoFocus
                           />
@@ -545,58 +567,47 @@ export default function PublicPoll() {
                           className="w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-base shadow-sm transition active:scale-98 flex items-center justify-center gap-2"
                         >
                           <Send className="w-4 h-4" />
-                          <span>Submit Word</span>
+                          <span>{hasVoted ? 'Update / Add Word' : 'Submit Word'}</span>
                         </button>
                       </form>
                     )}
 
                     {/* Star / Number Rating */}
                     {currentQuestion.question_type === 'rating' && (
-                      <div className="py-4">
+                      <div className="py-2">
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 text-center">
-                          Select your rating (1 to 5):
+                          {hasVoted ? 'Change your rating anytime:' : 'Select your rating (1 to 5):'}
                         </label>
                         <div className="flex items-center justify-center gap-2 sm:gap-4">
-                          {[1, 2, 3, 4, 5].map((star) => (
-                            <button
-                              key={star}
-                              disabled={submittingVote}
-                              onClick={() => handleVote(String(star))}
-                              className="flex flex-col items-center justify-center w-14 h-16 sm:w-16 sm:h-20 rounded-2xl border-2 border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-800 font-bold transition-all active:scale-95 group shadow-xs"
-                            >
-                              <Star className="w-6 h-6 text-slate-300 group-hover:text-amber-500 group-hover:fill-amber-400 transition" />
-                              <span className="text-sm sm:text-base mt-1">{star}</span>
-                            </button>
-                          ))}
+                          {[1, 2, 3, 4, 5].map((star) => {
+                            const isSelected = Number(userVote) === star;
+                            const isFilled = Number(userVote) >= star;
+                            return (
+                              <button
+                                key={star}
+                                disabled={submittingVote}
+                                onClick={() => handleVote(String(star))}
+                                className={`flex flex-col items-center justify-center w-14 h-16 sm:w-16 sm:h-20 rounded-2xl border-2 transition-all active:scale-95 group shadow-xs ${
+                                  isSelected
+                                    ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-400/30'
+                                    : 'border-slate-200 hover:border-amber-400 hover:bg-amber-50/50'
+                                }`}
+                              >
+                                <Star className={`w-6 h-6 transition ${
+                                  isFilled
+                                    ? 'text-amber-500 fill-amber-400'
+                                    : 'text-slate-300 group-hover:text-amber-400'
+                                }`} />
+                                <span className={`text-sm sm:text-base mt-1 font-bold ${
+                                  isSelected ? 'text-amber-800' : 'text-slate-700'
+                                }`}>
+                                  {star}
+                                </span>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
-                    )}
-
-                    {/* Open Text */}
-                    {currentQuestion.question_type === 'open_text' && (
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          if (textInput.trim()) handleVote(textInput.trim());
-                        }}
-                        className="space-y-4"
-                      >
-                        <textarea
-                          rows={3}
-                          value={textInput}
-                          onChange={(e) => setTextInput(e.target.value)}
-                          placeholder="Type your answer or comment here..."
-                          className="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 focus:border-brand-500 focus:ring-0 text-base font-medium text-slate-900 placeholder:text-slate-400"
-                        />
-                        <button
-                          type="submit"
-                          disabled={!textInput.trim() || submittingVote}
-                          className="w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-base shadow-sm transition active:scale-98 flex items-center justify-center gap-2"
-                        >
-                          <Send className="w-4 h-4" />
-                          <span>Submit Answer</span>
-                        </button>
-                      </form>
                     )}
                   </div>
                 ) : null}

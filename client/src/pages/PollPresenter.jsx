@@ -18,8 +18,8 @@ import {
   Lock,
   EyeOff,
   AlertCircle,
-  HelpCircle,
-  Pin
+  Pin,
+  ArrowRight
 } from 'lucide-react';
 
 export default function PollPresenter() {
@@ -42,13 +42,13 @@ export default function PollPresenter() {
   const joinUrl = `${window.location.origin}/p/${encodeURIComponent(code || '')}`;
 
   useEffect(() => {
-    // Generate QR Code data URL
+    // Generate high-resolution QR Code data URL with high contrast
     QRCode.toDataURL(joinUrl, {
-      width: 240,
+      width: 400,
       margin: 1,
       color: {
-        dark: '#ffffff',
-        light: '#00000000' // transparent
+        dark: '#0f172a', // slate-900
+        light: '#ffffff'  // crisp white background
       }
     })
       .then((url) => setQrDataUrl(url))
@@ -74,7 +74,7 @@ export default function PollPresenter() {
           if (pinned) setHighlightedQa(pinned);
         }
 
-        // Connect WebSocket
+        // Connect WebSocket with isPresenter: true
         socket = io({
           path: '/socket.io',
           transports: ['websocket', 'polling']
@@ -85,7 +85,8 @@ export default function PollPresenter() {
           socket.emit('poll:join', {
             pollId: data.poll.id,
             participantId: 'presenter_' + Math.random().toString(36).substring(2, 7),
-            isHost: false
+            isHost: false,
+            isPresenter: true
           });
         });
 
@@ -132,7 +133,6 @@ export default function PollPresenter() {
         });
 
         socket.on('qa:question_highlighted', ({ qaQuestionId }) => {
-          // Re-fetch or update pinned question
           publicPollApi.get(data.poll.id, 'presenter').then((res) => {
             const pinned = (res.qaQuestions || []).find((q) => q.id === qaQuestionId);
             setHighlightedQa(pinned || null);
@@ -209,37 +209,25 @@ export default function PollPresenter() {
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white flex flex-col justify-between selection:bg-indigo-500 selection:text-white relative overflow-hidden">
       <SEO title={`Live Screen: ${poll.title}`} />
 
-      {/* Top Banner: Join Instructions + QR Code + Fullscreen Button */}
-      <header className="px-6 sm:px-12 py-5 flex items-center justify-between border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-xl z-20">
-        <div className="flex items-center space-x-6">
-          {/* QR Code thumbnail */}
-          {qrDataUrl && (
-            <div className="hidden sm:block p-1.5 bg-white/10 rounded-xl border border-white/15 shadow-lg shadow-indigo-950/50">
-              <img src={qrDataUrl} alt="Scan to join poll" className="w-14 h-14 object-contain" />
-            </div>
-          )}
-
+      {/* Top Header Bar */}
+      <header className="px-6 sm:px-10 py-4 flex items-center justify-between border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-xl z-20">
+        <div className="flex items-center space-x-3">
+          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-600/30">
+            <Zap className="w-4 h-4 text-white" />
+          </div>
           <div>
-            <div className="text-xs uppercase tracking-widest font-bold text-indigo-400 mb-0.5 flex items-center space-x-2">
-              <Zap className="w-3.5 h-3.5" />
-              <span>Join at ask.urspace.com/p</span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <span className="text-slate-400 text-sm font-medium">Event Code:</span>
-              <span className="text-2xl sm:text-3xl font-black font-mono tracking-wider text-white bg-slate-800/90 px-3 py-0.5 rounded-xl border border-slate-700/80 shadow-inner">
-                {poll.code}
-              </span>
-            </div>
+            <span className="text-sm font-bold text-white tracking-tight line-clamp-1">{poll.title}</span>
+            <span className="text-[11px] text-slate-400 block">Live Interactive Session</span>
           </div>
         </div>
 
         {/* Right side: Participant counter + Fullscreen button */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-slate-800/90 border border-slate-700/80 text-sm font-semibold text-slate-300">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <Users className="w-4 h-4 text-indigo-400" />
+            <Users className="w-4 h-4 text-emerald-400" />
             <span className="text-white font-bold">{participantCount}</span>
-            <span className="text-xs text-slate-400 hidden sm:inline">participants</span>
+            <span className="text-xs text-slate-400">Voters</span>
           </div>
 
           <button
@@ -253,124 +241,149 @@ export default function PollPresenter() {
         </div>
       </header>
 
-      {/* Main Stage Display Area */}
-      <main className="flex-1 flex flex-col justify-center px-6 sm:px-16 py-8 max-w-6xl mx-auto w-full z-10">
-        {currentQuestion ? (
-          <div className="space-y-8 animate-fadeIn">
-            {/* Question Title & State Badges */}
-            <div className="space-y-3">
-              <div className="flex items-center space-x-3">
-                <span className="px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-xs font-bold uppercase tracking-wider">
-                  Question {currentQuestion.order_num}
-                </span>
-                {!votingOpen && (
-                  <span className="px-3 py-1 rounded-full bg-rose-500/20 border border-rose-400/30 text-rose-300 text-xs font-bold uppercase tracking-wider flex items-center space-x-1">
-                    <Lock className="w-3 h-3" />
-                    <span>Voting Closed</span>
-                  </span>
-                )}
-                {!showResults && (
-                  <span className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-300 text-xs font-bold uppercase tracking-wider flex items-center space-x-1">
-                    <EyeOff className="w-3 h-3" />
-                    <span>Results Hidden</span>
-                  </span>
-                )}
+      {/* Main Screen Layout: Large QR Code Panel + Stage Question Canvas */}
+      <main className="flex-1 px-6 sm:px-10 py-6 max-w-7xl mx-auto w-full z-10 flex flex-col justify-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          
+          {/* Prominent Large QR Code Card (4 cols on desktop) */}
+          <div className="lg:col-span-4 order-2 lg:order-1 flex flex-col items-center">
+            <div className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl text-slate-900 border-4 border-indigo-500/30 text-center">
+              <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 font-bold text-xs uppercase tracking-wider mb-3">
+                <QrCode className="w-3.5 h-3.5" />
+                <span>Join On Your Phone</span>
               </div>
 
-              <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight leading-tight">
-                {currentQuestion.question_text}
-              </h1>
-            </div>
+              {/* High-Resolution QR Code */}
+              {qrDataUrl ? (
+                <div className="p-2 bg-white rounded-2xl border-2 border-slate-200 inline-block mb-4 shadow-inner">
+                  <img
+                    src={qrDataUrl}
+                    alt="Scan QR code to participate"
+                    className="w-52 h-52 sm:w-60 sm:h-60 object-contain mx-auto"
+                  />
+                </div>
+              ) : (
+                <div className="w-52 h-52 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse">
+                  <QrCode className="w-12 h-12 text-slate-400" />
+                </div>
+              )}
 
-            {/* Results Canvas */}
-            {showResults ? (
-              <div className="bg-slate-900/60 backdrop-blur-2xl border border-slate-800 rounded-3xl p-6 sm:p-10 shadow-2xl shadow-indigo-950/30">
-                {/* Multiple Choice Chart */}
-                {currentQuestion.question_type === 'multiple_choice' && (
-                  <div className="space-y-4">
-                    <LiveBarChart results={liveResults?.results || []} />
-                  </div>
-                )}
+              <p className="text-xs font-semibold text-slate-500 mb-1">
+                Point your camera at the QR code, or visit:
+              </p>
+              <div className="text-sm font-bold text-slate-900 tracking-tight font-mono mb-3">
+                ask.urspace.com/p
+              </div>
 
-                {/* Word Cloud */}
-                {currentQuestion.question_type === 'word_cloud' && (
-                  <div className="py-6">
-                    <WordCloud words={liveResults?.words || []} />
-                  </div>
-                )}
-
-                {/* Rating Chart */}
-                {currentQuestion.question_type === 'rating' && (
-                  <div className="py-4">
-                    <LiveRatingChart
-                      average={liveResults?.average || 0}
-                      maxRating={liveResults?.maxRating || 5}
-                      totalVotes={liveResults?.totalVotes || 0}
-                      counts={liveResults?.counts || {}}
-                    />
-                  </div>
-                )}
-
-                {/* Open text response ticker / grid */}
-                {currentQuestion.question_type === 'text' && (
-                  <div className="space-y-4">
-                    {(!liveResults?.responses || liveResults.responses.length === 0) ? (
-                      <div className="text-center py-16 text-slate-500 text-lg font-medium">
-                        Waiting for audience responses...
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-[500px] overflow-y-auto pr-2">
-                        {liveResults.responses.map((resp, rIdx) => (
-                          <div
-                            key={rIdx}
-                            className="p-4 rounded-2xl bg-slate-800/70 border border-slate-700/60 text-slate-200 text-sm font-medium shadow-md leading-relaxed animate-fadeIn"
-                          >
-                            "{resp}"
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Total votes footer badge */}
-                <div className="mt-6 pt-6 border-t border-slate-800/80 flex items-center justify-between text-xs sm:text-sm text-slate-400 font-medium">
-                  <div className="flex items-center space-x-2">
-                    <Sparkles className="w-4 h-4 text-indigo-400" />
-                    <span>Real-time live results</span>
-                  </div>
-                  <div>
-                    <span className="text-white font-extrabold text-base mr-1">
-                      {liveResults?.totalVotes || 0}
-                    </span>
-                    <span>votes</span>
-                  </div>
+              <div className="bg-slate-900 text-white p-3 rounded-2xl">
+                <div className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">
+                  Event PIN
+                </div>
+                <div className="text-2xl sm:text-3xl font-black font-mono tracking-widest text-white">
+                  {poll.code}
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Question Stage & Live Results Canvas (8 cols on desktop) */}
+          <div className="lg:col-span-8 order-1 lg:order-2 space-y-6">
+            {currentQuestion ? (
+              <div className="space-y-6 animate-fadeIn">
+                {/* Question Header & State */}
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-3">
+                    <span className="px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-xs font-bold uppercase tracking-wider">
+                      Question {currentQuestion.order_num}
+                    </span>
+                    {!votingOpen && (
+                      <span className="px-3 py-1 rounded-full bg-rose-500/20 border border-rose-400/30 text-rose-300 text-xs font-bold uppercase tracking-wider flex items-center space-x-1">
+                        <Lock className="w-3 h-3" />
+                        <span>Voting Closed</span>
+                      </span>
+                    )}
+                    {!showResults && (
+                      <span className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-300 text-xs font-bold uppercase tracking-wider flex items-center space-x-1">
+                        <EyeOff className="w-3 h-3" />
+                        <span>Results Hidden</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight leading-tight">
+                    {currentQuestion.question_text}
+                  </h1>
+                </div>
+
+                {/* Results Graphic */}
+                {showResults ? (
+                  <div className="bg-slate-900/70 backdrop-blur-2xl border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-indigo-950/40">
+                    {/* Multiple Choice Chart */}
+                    {currentQuestion.question_type === 'multiple_choice' && (
+                      <div className="space-y-4">
+                        <LiveBarChart results={liveResults?.results || []} />
+                      </div>
+                    )}
+
+                    {/* Word Cloud */}
+                    {currentQuestion.question_type === 'word_cloud' && (
+                      <div className="py-4">
+                        <WordCloud words={liveResults?.words || []} />
+                      </div>
+                    )}
+
+                    {/* Rating Chart */}
+                    {currentQuestion.question_type === 'rating' && (
+                      <div className="py-4">
+                        <LiveRatingChart
+                          average={liveResults?.average || 0}
+                          maxRating={liveResults?.maxRating || 5}
+                          totalVotes={liveResults?.totalVotes || 0}
+                          counts={liveResults?.counts || {}}
+                        />
+                      </div>
+                    )}
+
+                    {/* Live votes count footer */}
+                    <div className="mt-6 pt-5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400 font-medium">
+                      <div className="flex items-center space-x-2">
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Live incoming responses</span>
+                      </div>
+                      <div>
+                        <span className="text-white font-extrabold text-base mr-1">
+                          {liveResults?.totalVotes || 0}
+                        </span>
+                        <span>votes cast</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-slate-900/60 backdrop-blur-2xl border border-slate-800 rounded-3xl p-12 text-center shadow-2xl">
+                    <EyeOff className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+                    <h3 className="text-2xl font-bold text-white mb-2">Results are currently hidden</h3>
+                    <p className="text-slate-400 text-sm max-w-md mx-auto">
+                      Cast your vote now! The host will reveal live responses shortly.
+                    </p>
+                  </div>
+                )}
+              </div>
             ) : (
-              <div className="bg-slate-900/60 backdrop-blur-2xl border border-slate-800 rounded-3xl p-12 text-center shadow-2xl">
-                <EyeOff className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-                <h3 className="text-2xl font-bold text-white mb-2">Results are currently hidden</h3>
-                <p className="text-slate-400 text-sm max-w-md mx-auto">
-                  The host will reveal live responses shortly. Cast your vote now!
+              <div className="text-center py-20 bg-slate-900/40 rounded-3xl border border-slate-800/80 p-8">
+                <h2 className="text-2xl font-extrabold text-white mb-2">Session Starting Soon</h2>
+                <p className="text-slate-400 text-sm">
+                  Scan the QR code to connect. The presenter will activate the first question shortly.
                 </p>
               </div>
             )}
           </div>
-        ) : (
-          <div className="text-center py-20">
-            <h2 className="text-3xl font-extrabold text-white mb-3">Poll session is waiting to begin</h2>
-            <p className="text-slate-400 text-base">
-              The presenter will activate the first question in a moment.
-            </p>
-          </div>
-        )}
+        </div>
       </main>
 
       {/* Stage Highlight Spotlight: Pinned Q&A question from Host */}
       {highlightedQa && (
-        <div className="px-6 sm:px-12 pb-6 z-30 animate-slideUp">
-          <div className="max-w-4xl mx-auto bg-gradient-to-r from-amber-500/20 via-yellow-500/25 to-amber-500/20 border-2 border-amber-400/60 rounded-3xl p-5 sm:p-6 shadow-2xl backdrop-blur-xl flex items-start space-x-4">
+        <div className="px-6 sm:px-10 pb-6 z-30 animate-slideUp">
+          <div className="max-w-4xl mx-auto bg-gradient-to-r from-amber-500/20 via-yellow-500/25 to-amber-500/20 border-2 border-amber-400/60 rounded-3xl p-5 shadow-2xl backdrop-blur-xl flex items-start space-x-4">
             <div className="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 font-bold flex items-center justify-center flex-shrink-0 shadow-lg shadow-amber-500/30">
               <Pin className="w-5 h-5 fill-slate-950" />
             </div>
@@ -394,8 +407,8 @@ export default function PollPresenter() {
       )}
 
       {/* Bottom Bar */}
-      <footer className="px-6 sm:px-12 py-3 border-t border-slate-900 bg-slate-950/80 flex items-center justify-between text-xs text-slate-500">
-        <div>Ask Live Polling System</div>
+      <footer className="px-6 sm:px-10 py-3 border-t border-slate-900 bg-slate-950/80 flex items-center justify-between text-xs text-slate-500">
+        <div>Ask Live Interactive Engine</div>
         <div>Press F11 for Fullscreen</div>
       </footer>
     </div>

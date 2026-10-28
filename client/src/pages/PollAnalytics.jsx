@@ -219,25 +219,6 @@ export default function PollAnalytics() {
                   counts={q.results?.counts || {}}
                 />
               )}
-
-              {q.question_type === 'text' && (
-                <div className="space-y-2 max-h-72 overflow-y-auto">
-                  {(!q.results?.responses || q.results.responses.length === 0) ? (
-                    <div className="text-xs text-slate-400 italic">No text responses received.</div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {q.results.responses.map((resp, rIdx) => (
-                        <div
-                          key={rIdx}
-                          className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800"
-                        >
-                          "{resp}"
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </div>
         ))}
