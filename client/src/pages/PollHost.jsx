@@ -5,7 +5,6 @@ import { pollApi } from '../services/api';
 import WordCloud from '../components/WordCloud';
 import LiveBarChart from '../components/LiveBarChart';
 import LiveRatingChart from '../components/LiveRatingChart';
-import PollQRCodeModal from '../components/PollQRCodeModal';
 import SEO from '../components/SEO';
 import {
   ArrowLeft,
@@ -18,7 +17,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Tv,
-  QrCode,
   Users,
   MessageSquare,
   BarChart3,
@@ -130,6 +128,11 @@ export default function PollHost() {
           setParticipantCount(data.count || 0);
         });
 
+        // Remote Q&A display sync
+        socket.on('poll:qa_display_toggled', ({ show_qa }) => {
+          setPoll((prev) => (prev ? { ...prev, show_qa_on_screen: show_qa } : prev));
+        });
+
         // Q&A socket events
         socket.on('qa:question_added', (item) => {
           setQaQuestions((prev) => {
@@ -235,6 +238,16 @@ export default function PollHost() {
       pollId: id,
       show_results: !poll.show_results
     });
+  };
+
+  const handleToggleQaDisplay = () => {
+    if (!poll || !socketRef.current) return;
+    const nextVal = !poll.show_qa_on_screen;
+    socketRef.current.emit('poll:host_toggle_qa_display', {
+      pollId: id,
+      show_qa: nextVal
+    });
+    setPoll((prev) => (prev ? { ...prev, show_qa_on_screen: nextVal } : prev));
   };
 
   // Q&A Moderation Actions
@@ -376,15 +389,22 @@ export default function PollHost() {
               <ArrowUpRight className="w-3 h-3 text-slate-400" />
             </a>
 
-            {/* QR Code Share Modal */}
-            <button
-              type="button"
-              onClick={() => setShowQrModal(true)}
-              className="px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs shadow-sm transition flex items-center space-x-1.5"
-            >
-              <QrCode className="w-3.5 h-3.5 text-indigo-600" />
-              <span>QR Code</span>
-            </button>
+            {/* Toggle Q&A on Screen */}
+            {poll.qa_enabled && (
+              <button
+                type="button"
+                onClick={handleToggleQaDisplay}
+                className={`px-3 py-2 rounded-xl border text-xs font-semibold shadow-xs transition flex items-center space-x-1.5 ${
+                  poll.show_qa_on_screen
+                    ? 'bg-brand-50 border-brand-300 text-brand-700'
+                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                }`}
+                title={poll.show_qa_on_screen ? 'Hide Q&A sidebar on presenter screen' : 'Show Q&A sidebar on presenter screen'}
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-brand-600" />
+                <span>{poll.show_qa_on_screen ? 'Q&A on Screen: ON' : 'Show Q&A on Screen'}</span>
+              </button>
+            )}
 
             {/* Edit Poll */}
             <Link
@@ -882,13 +902,7 @@ export default function PollHost() {
         </div>
       )}
 
-      {/* QR Code Modal for audience sharing */}
-      <PollQRCodeModal
-        isOpen={showQrModal}
-        onClose={() => setShowQrModal(false)}
-        code={poll.code}
-        title={poll.title}
-      />
+      {/* End main */}
     </div>
   );
 }

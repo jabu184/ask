@@ -41,8 +41,15 @@ export default function App() {
           {/* Public Survey Respondent Experience (no creator chrome) */}
           <Route path="/s/:surveyId" element={<PublicSurvey />} />
 
-          {/* Public Live Poll Experience (Slido-style interactive respondent & screen) */}
-          <Route path="/p" element={<PollJoin />} />
+          {/* Public Live Poll Join Screen */}
+          <Route
+            path="/p"
+            element={
+              <LayoutWithNavbar>
+                <PollJoin />
+              </LayoutWithNavbar>
+            }
+          />
           <Route path="/p/:code" element={<PublicPoll />} />
           <Route path="/p/:code/present" element={<PollPresenter />} />
 

@@ -161,6 +161,7 @@ function getPollState(pollId, participantId = null, isHost = false) {
       show_results: Boolean(poll.show_results),
       qa_enabled: Boolean(poll.qa_enabled),
       qa_moderation: Boolean(poll.qa_moderation),
+      show_qa_on_screen: Boolean(poll.show_qa_on_screen),
       created_at: poll.created_at,
       closed_at: poll.closed_at
     },
@@ -336,6 +337,16 @@ function initPollSocket(httpServer) {
         });
       } catch (err) {
         console.error('[Socket Host Toggle Results Error]', err);
+      }
+    });
+
+    socket.on('poll:host_toggle_qa_display', ({ pollId, show_qa }) => {
+      try {
+        const val = show_qa ? 1 : 0;
+        db.prepare('UPDATE polls SET show_qa_on_screen = ? WHERE id = ?').run(val, pollId);
+        io.to(`poll:${pollId}`).emit('poll:qa_display_toggled', { show_qa: Boolean(val) });
+      } catch (err) {
+        console.error('[Socket Host Toggle QA Display Error]', err);
       }
     });
 

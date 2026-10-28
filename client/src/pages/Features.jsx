@@ -206,7 +206,7 @@ export default function Features() {
         </div>
       </section>
 
-      {/* NEW: Live Interactive Polling Section (Slido Alternative) */}
+      {/* NEW: Live Interactive Polling Section */}
       <section className="py-16 bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900 text-white relative overflow-hidden">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center max-w-3xl mx-auto mb-12">
@@ -218,7 +218,7 @@ export default function Features() {
               Live Interactive Polling & Q&A
             </h2>
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-              Engage your audience in real time during webinars, all-hands, conferences, and classroom lectures — an all-in-one Slido alternative built right in.
+              Engage your audience in real time during webinars, all-hands, conferences, and classroom lectures — an all-in-one interactive polling solution built right in.
             </p>
           </div>
 

@@ -103,6 +103,7 @@ function initSchema() {
       show_results INTEGER DEFAULT 1,
       qa_enabled INTEGER DEFAULT 1,
       qa_moderation INTEGER DEFAULT 0,
+      show_qa_on_screen INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       closed_at DATETIME,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -224,6 +225,13 @@ function initSchema() {
     }
   } catch (backfillErr) {
     console.warn('[Database] Email logs backfill notice:', backfillErr.message);
+  }
+
+  // Ensure show_qa_on_screen column exists on existing polls table
+  try {
+    db.exec(`ALTER TABLE polls ADD COLUMN show_qa_on_screen INTEGER DEFAULT 0`);
+  } catch (e) {
+    // Column already exists
   }
 
   console.log('[Database] Schema initialized successfully.');

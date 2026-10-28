@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { surveyApi, pollApi } from '../services/api';
-import PollQRCodeModal from '../components/PollQRCodeModal';
 import { 
   Plus, 
   BarChart2, 
@@ -16,7 +15,6 @@ import {
   AlertCircle,
   Radio,
   Play,
-  QrCode,
   Tv,
   Users,
   MessageSquare,
@@ -38,7 +36,6 @@ export default function Dashboard() {
   const [polls, setPolls] = useState([]);
   const [loadingPolls, setLoadingPolls] = useState(true);
   const [duplicatingPollId, setDuplicatingPollId] = useState(null);
-  const [selectedQrPoll, setSelectedQrPoll] = useState(null);
 
   // General UI state
   const [error, setError] = useState('');
@@ -166,7 +163,7 @@ export default function Dashboard() {
             Creator Dashboard
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Build questionnaires, host Slido-style live interactive polls, and analyze responses.
+            Build questionnaires, host live interactive polls, and analyze responses.
           </p>
         </div>
 
@@ -219,9 +216,6 @@ export default function Dashboard() {
           <span>Live Polls & Audience Q&A</span>
           <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700">
             {polls.length}
-          </span>
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-amber-100 text-amber-800">
-            Slido Mode
           </span>
         </button>
       </div>
@@ -414,7 +408,7 @@ export default function Dashboard() {
         </>
       )}
 
-      {/* TAB 2: Live Polls View (Slido) */}
+      {/* TAB 2: Live Polls View */}
       {activeTab === 'polls' && (
         <>
           {loadingPolls ? (
@@ -429,7 +423,7 @@ export default function Dashboard() {
               </div>
               <h3 className="text-lg font-bold text-slate-900">No live polls created yet</h3>
               <p className="text-sm text-slate-500 mt-1 mb-6">
-                Host synchronous, live interactive voting and audience Q&A like Slido. Attendees join with a 6-digit PIN or scan a QR code on the big screen!
+                Host synchronous, live interactive voting and audience Q&A in real time. Attendees join with a 6-digit PIN or scan a QR code on the big screen!
               </p>
               <Link
                 to="/polls/new"
@@ -480,16 +474,6 @@ export default function Dashboard() {
                             <span>{poll.code}</span>
                           </span>
                         </div>
-
-                        {/* QR Code quick trigger */}
-                        <button
-                          type="button"
-                          onClick={() => setSelectedQrPoll(poll)}
-                          className="p-1 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
-                          title="Show QR Code & Participant URL"
-                        >
-                          <QrCode className="w-4 h-4" />
-                        </button>
                       </div>
 
                       {/* Title & Notes */}
@@ -600,16 +584,6 @@ export default function Dashboard() {
             </div>
           )}
         </>
-      )}
-
-      {/* QR Code Modal */}
-      {selectedQrPoll && (
-        <PollQRCodeModal
-          isOpen={Boolean(selectedQrPoll)}
-          onClose={() => setSelectedQrPoll(null)}
-          code={selectedQrPoll.code}
-          title={selectedQrPoll.title}
-        />
       )}
     </div>
   );
