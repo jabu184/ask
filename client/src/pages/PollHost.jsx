@@ -31,6 +31,7 @@ import {
   ArrowUpRight,
   ThumbsUp,
   CheckCircle,
+  CheckCircle2,
   RotateCcw,
   Pin,
   Trash2,
@@ -53,6 +54,7 @@ export default function PollHost() {
   const [liveResults, setLiveResults] = useState(null);
   const [qaQuestions, setQaQuestions] = useState([]);
   const [participantCount, setParticipantCount] = useState(0);
+  const [showCorrectAnswer, setShowCorrectAnswer] = useState(false);
 
   // Tab state: 'live' | 'qa' | 'analytics'
   const [activeTab, setActiveTab] = useState('live');
@@ -70,6 +72,9 @@ export default function PollHost() {
         const data = await pollApi.get(id);
         setPoll(data.poll);
         setQuestions(data.questions || []);
+        if (typeof data.poll.show_correct_answer !== 'undefined') {
+          setShowCorrectAnswer(Boolean(data.poll.show_correct_answer));
+        }
 
         const activeQ = data.questions.find((q) => q.id === data.poll.current_question_id) || data.questions[0];
         setCurrentQuestion(activeQ || null);
@@ -91,7 +96,12 @@ export default function PollHost() {
         });
 
         socket.on('poll:state', (state) => {
-          if (state.poll) setPoll(state.poll);
+          if (state.poll) {
+            setPoll(state.poll);
+            if (typeof state.poll.show_correct_answer !== 'undefined') {
+              setShowCorrectAnswer(Boolean(state.poll.show_correct_answer));
+            }
+          }
           if (state.questions) setQuestions(state.questions);
           if (state.currentQuestion) setCurrentQuestion(state.currentQuestion);
           if (state.liveResults) setLiveResults(state.liveResults);
@@ -102,6 +112,7 @@ export default function PollHost() {
 
         socket.on('poll:question_changed', (data) => {
           setCurrentQuestion(data.currentQuestion);
+          setShowCorrectAnswer(false);
           if (data.liveResults) setLiveResults(data.liveResults);
           setPoll((prev) => (prev ? { ...prev, current_question_id: data.currentQuestion.id, voting_open: true } : prev));
         });
@@ -113,6 +124,10 @@ export default function PollHost() {
         socket.on('poll:results_toggled', (data) => {
           setPoll((prev) => (prev ? { ...prev, show_results: data.show_results } : prev));
           if (data.liveResults) setLiveResults(data.liveResults);
+        });
+
+        socket.on('poll:correct_answer_toggled', ({ show_correct_answer }) => {
+          setShowCorrectAnswer(Boolean(show_correct_answer));
         });
 
         socket.on('poll:status_changed', (data) => {
@@ -244,6 +259,16 @@ export default function PollHost() {
     socketRef.current.emit('poll:host_toggle_results', {
       pollId: id,
       show_results: !poll.show_results
+    });
+  };
+
+  const handleToggleCorrectAnswer = () => {
+    if (!poll || !socketRef.current) return;
+    const nextVal = !showCorrectAnswer;
+    setShowCorrectAnswer(nextVal);
+    socketRef.current.emit('poll:host_toggle_correct_answer', {
+      pollId: id,
+      show_correct: nextVal
     });
   };
 
@@ -637,6 +662,22 @@ export default function PollHost() {
                       )}
                     </button>
 
+                    {currentQuestion.question_type === 'multiple_choice' && currentQuestion.correct_answer && (
+                      <button
+                        type="button"
+                        onClick={handleToggleCorrectAnswer}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition ${
+                          showCorrectAnswer
+                            ? 'bg-emerald-600 text-white border border-emerald-700 shadow-sm hover:bg-emerald-700'
+                            : 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
+                        }`}
+                        title={showCorrectAnswer ? 'Click to hide correct answer from audience' : `Click to reveal correct answer: ${currentQuestion.correct_answer}`}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>{showCorrectAnswer ? 'Hide Correct Answer' : 'Reveal Correct Answer'}</span>
+                      </button>
+                    )}
+
                     {/* Prev / Next buttons */}
                     <div className="flex items-center space-x-1 pl-2 border-l border-slate-200">
                       <button
@@ -666,6 +707,17 @@ export default function PollHost() {
                   <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
                     {currentQuestion.question_text}
                   </h2>
+                  {currentQuestion.correct_answer && (
+                    <div className="mt-2.5 flex items-center space-x-2 text-xs">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold shadow-2xs">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Correct Answer: <strong>{currentQuestion.correct_answer}</strong></span>
+                      </span>
+                      <span className={`text-[11px] font-semibold ${showCorrectAnswer ? 'text-emerald-700' : 'text-slate-400'}`}>
+                        {showCorrectAnswer ? '• Revealed on presenter and audience screens' : '• Hidden from audience until revealed'}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Live Graphic Canvas */}
@@ -682,7 +734,12 @@ export default function PollHost() {
 
                   {/* Multiple Choice Bar Chart */}
                   {currentQuestion.question_type === 'multiple_choice' && (
-                    <LiveBarChart results={liveResults?.results || []} />
+                    <LiveBarChart
+                      results={liveResults?.results || []}
+                      totalVotes={liveResults?.totalVotes || 0}
+                      correctAnswer={currentQuestion.correct_answer}
+                      showCorrectAnswer={showCorrectAnswer}
+                    />
                   )}
 
                   {/* Word Cloud */}

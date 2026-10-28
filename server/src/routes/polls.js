@@ -114,8 +114,8 @@ router.post('/', (req, res) => {
       );
 
       const insertQ = db.prepare(`
-        INSERT INTO poll_questions (id, poll_id, order_num, question_text, question_type, options_json)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO poll_questions (id, poll_id, order_num, question_text, question_type, options_json, correct_answer)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
 
       questions.forEach((q, idx) => {
@@ -137,7 +137,8 @@ router.post('/', (req, res) => {
           idx + 1,
           q.question_text || `Question ${idx + 1}`,
           q.question_type || 'multiple_choice',
-          optionsJson
+          optionsJson,
+          q.correctAnswer || q.correct_answer || null
         );
       });
 
@@ -198,6 +199,7 @@ router.get('/:id', (req, res) => {
         ...poll,
         voting_open: Boolean(poll.voting_open),
         show_results: Boolean(poll.show_results),
+        show_correct_answer: Boolean(poll.show_correct_answer),
         qa_enabled: Boolean(poll.qa_enabled),
         qa_moderation: Boolean(poll.qa_moderation)
       },
@@ -268,13 +270,14 @@ router.put('/:id', (req, res) => {
             order_num = ?,
             question_text = ?,
             question_type = ?,
-            options_json = ?
+            options_json = ?,
+            correct_answer = ?
           WHERE id = ?
         `);
 
         const insertQ = db.prepare(`
-          INSERT INTO poll_questions (id, poll_id, order_num, question_text, question_type, options_json)
-          VALUES (?, ?, ?, ?, ?, ?)
+          INSERT INTO poll_questions (id, poll_id, order_num, question_text, question_type, options_json, correct_answer)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
 
         questions.forEach((q, idx) => {
@@ -287,11 +290,13 @@ router.put('/:id', (req, res) => {
             optionsJson = JSON.stringify({ allowMultiple: q.allowMultiple !== false });
           }
 
+          const correctAnswer = q.correctAnswer || q.correct_answer || null;
+
           if (q.id && existingQs.some(e => e.id === q.id)) {
-            updateQ.run(idx + 1, q.question_text, q.question_type, optionsJson, q.id);
+            updateQ.run(idx + 1, q.question_text, q.question_type, optionsJson, correctAnswer, q.id);
           } else {
             const newQId = generateId();
-            insertQ.run(newQId, poll.id, idx + 1, q.question_text, q.question_type, optionsJson);
+            insertQ.run(newQId, poll.id, idx + 1, q.question_text, q.question_type, optionsJson, correctAnswer);
           }
         });
 
@@ -376,14 +381,14 @@ router.post('/:id/duplicate', (req, res) => {
       );
 
       const insertQ = db.prepare(`
-        INSERT INTO poll_questions (id, poll_id, order_num, question_text, question_type, options_json)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO poll_questions (id, poll_id, order_num, question_text, question_type, options_json, correct_answer)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
 
       originalQuestions.forEach((q, idx) => {
         const qId = generateId();
         if (idx === 0) firstQuestionId = qId;
-        insertQ.run(qId, newPollId, q.order_num, q.question_text, q.question_type, q.options_json);
+        insertQ.run(qId, newPollId, q.order_num, q.question_text, q.question_type, q.options_json, q.correct_answer || null);
       });
 
       if (firstQuestionId) {

@@ -132,11 +132,12 @@ function getPollState(pollId, participantId = null, isHost = false) {
     liveResults = computeQuestionResults(currentQuestion, pollId);
   }
 
+  let userVotes = [];
   let userVote = null;
   if (currentQuestion && participantId) {
-    const existingVote = db.prepare('SELECT value FROM poll_votes WHERE question_id = ? AND participant_id = ?').get(currentQuestion.id, participantId);
-    if (existingVote) {
-      userVote = existingVote.value;
+    userVotes = db.prepare('SELECT id, value, created_at FROM poll_votes WHERE question_id = ? AND participant_id = ? ORDER BY created_at ASC').all(currentQuestion.id, participantId);
+    if (userVotes.length > 0) {
+      userVote = userVotes[userVotes.length - 1].value;
     }
   }
 
@@ -160,6 +161,7 @@ function getPollState(pollId, participantId = null, isHost = false) {
       current_question_id: poll.current_question_id,
       voting_open: Boolean(poll.voting_open),
       show_results: Boolean(poll.show_results),
+      show_correct_answer: Boolean(poll.show_correct_answer),
       qa_enabled: Boolean(poll.qa_enabled),
       qa_moderation: Boolean(poll.qa_moderation),
       show_qa_on_screen: Boolean(poll.show_qa_on_screen),
@@ -172,6 +174,7 @@ function getPollState(pollId, participantId = null, isHost = false) {
       order_num: currentQuestion.order_num,
       question_text: currentQuestion.question_text,
       question_type: currentQuestion.question_type,
+      correct_answer: (isHost || poll.show_correct_answer === 1) ? (currentQuestion.correct_answer || null) : null,
       options: (() => {
         try {
           return typeof currentQuestion.options_json === 'string' ? JSON.parse(currentQuestion.options_json) : (currentQuestion.options_json || []);
@@ -182,7 +185,8 @@ function getPollState(pollId, participantId = null, isHost = false) {
     } : null,
     liveResults,
     userVote,
-    hasVoted: Boolean(userVote),
+    userVotes,
+    hasVoted: userVotes.length > 0,
     qaQuestions,
     userUpvotes,
     participantCount
@@ -290,6 +294,11 @@ function initPollSocket(httpServer) {
 
         socket.emit('poll:vote_confirmed', { questionId, value });
 
+        if (question.question_type === 'word_cloud') {
+          const participantWords = db.prepare('SELECT id, value, created_at FROM poll_votes WHERE question_id = ? AND participant_id = ? ORDER BY created_at ASC').all(questionId, participantId);
+          socket.emit('poll:user_words_updated', { questionId, words: participantWords });
+        }
+
         // Broadcast updated results if show_results is enabled
         const results = computeQuestionResults(question, pollId);
         io.to(`poll:${pollId}`).emit('poll:results_update', {
@@ -303,9 +312,30 @@ function initPollSocket(httpServer) {
       }
     });
 
+    socket.on('poll:remove_word', ({ pollId, questionId, participantId, voteId }) => {
+      try {
+        db.prepare('DELETE FROM poll_votes WHERE id = ? AND question_id = ? AND participant_id = ?').run(voteId, questionId, participantId);
+        const participantWords = db.prepare('SELECT id, value, created_at FROM poll_votes WHERE question_id = ? AND participant_id = ? ORDER BY created_at ASC').all(questionId, participantId);
+        socket.emit('poll:user_words_updated', { questionId, words: participantWords });
+
+        const question = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(questionId);
+        const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
+        if (question && poll) {
+          const results = computeQuestionResults(question, pollId);
+          io.to(`poll:${pollId}`).emit('poll:results_update', {
+            questionId,
+            results: (poll.show_results === 1) ? results : null,
+            totalVotes: results.totalVotes
+          });
+        }
+      } catch (err) {
+        console.error('[Socket Remove Word Error]', err);
+      }
+    });
+
     socket.on('poll:host_set_question', ({ pollId, questionId }) => {
       try {
-        db.prepare('UPDATE polls SET current_question_id = ?, voting_open = 1 WHERE id = ?').run(questionId, pollId);
+        db.prepare('UPDATE polls SET current_question_id = ?, voting_open = 1, show_correct_answer = 0 WHERE id = ?').run(questionId, pollId);
         const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
         const question = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(questionId);
 
@@ -324,9 +354,11 @@ function initPollSocket(httpServer) {
             order_num: question.order_num,
             question_text: question.question_text,
             question_type: question.question_type,
+            correct_answer: question.correct_answer || null,
             options: parsedOptions
           },
           voting_open: true,
+          show_correct_answer: false,
           liveResults: (poll.show_results === 1) ? results : null
         });
       } catch (err) {
@@ -374,6 +406,33 @@ function initPollSocket(httpServer) {
         io.to(`poll:${pollId}`).emit('poll:qa_display_toggled', { show_qa: Boolean(val) });
       } catch (err) {
         console.error('[Socket Host Toggle QA Display Error]', err);
+      }
+    });
+
+    socket.on('poll:host_toggle_correct_answer', ({ pollId, show_correct }) => {
+      try {
+        const val = show_correct ? 1 : 0;
+        db.prepare('UPDATE polls SET show_correct_answer = ? WHERE id = ?').run(val, pollId);
+        const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
+        let correctAnswer = null;
+        if (poll.current_question_id) {
+          const q = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(poll.current_question_id);
+          if (q) {
+            correctAnswer = q.correct_answer || null;
+            if (!correctAnswer && q.options_json) {
+              try {
+                const parsed = JSON.parse(q.options_json);
+                correctAnswer = parsed.correctAnswer || null;
+              } catch (e) {}
+            }
+          }
+        }
+        io.to(`poll:${pollId}`).emit('poll:correct_answer_toggled', {
+          show_correct_answer: Boolean(val),
+          correctAnswer: val === 1 ? correctAnswer : null
+        });
+      } catch (err) {
+        console.error('[Socket Host Toggle Correct Answer Error]', err);
       }
     });
 

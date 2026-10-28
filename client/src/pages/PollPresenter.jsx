@@ -21,7 +21,8 @@ import {
   Pin,
   MessageSquare,
   ChevronRight,
-  HelpCircle
+  HelpCircle,
+  CheckCircle2
 } from 'lucide-react';
 
 export default function PollPresenter() {
@@ -38,6 +39,8 @@ export default function PollPresenter() {
   const [participantCount, setParticipantCount] = useState(0);
   const [qaQuestions, setQaQuestions] = useState([]);
   const [showQaSidebar, setShowQaSidebar] = useState(false);
+  const [showCorrectAnswer, setShowCorrectAnswer] = useState(false);
+  const [correctAnswer, setCorrectAnswer] = useState(null);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -71,6 +74,8 @@ export default function PollPresenter() {
         setShowResults(Boolean(data.poll.show_results));
         setVotingOpen(Boolean(data.poll.voting_open));
         setShowQaSidebar(Boolean(data.poll.show_qa_on_screen));
+        setShowCorrectAnswer(Boolean(data.poll.show_correct_answer));
+        setCorrectAnswer(data.currentQuestion?.correct_answer || null);
         setQaQuestions(data.qaQuestions || []);
 
         // Connect WebSocket with isPresenter: true
@@ -97,8 +102,16 @@ export default function PollPresenter() {
             if (typeof state.poll.show_qa_on_screen === 'boolean') {
               setShowQaSidebar(state.poll.show_qa_on_screen);
             }
+            if (typeof state.poll.show_correct_answer !== 'undefined') {
+              setShowCorrectAnswer(Boolean(state.poll.show_correct_answer));
+            }
           }
-          if (state.currentQuestion) setCurrentQuestion(state.currentQuestion);
+          if (state.currentQuestion) {
+            setCurrentQuestion(state.currentQuestion);
+            if (state.currentQuestion.correct_answer !== undefined) {
+              setCorrectAnswer(state.currentQuestion.correct_answer || null);
+            }
+          }
           if (state.liveResults) setLiveResults(state.liveResults);
           if (state.qaQuestions) setQaQuestions(state.qaQuestions);
           if (typeof state.participantCount === 'number') setParticipantCount(state.participantCount);
@@ -109,6 +122,15 @@ export default function PollPresenter() {
           setCurrentQuestion(payload.currentQuestion);
           setLiveResults(payload.liveResults);
           setVotingOpen(true);
+          setShowCorrectAnswer(false);
+          setCorrectAnswer(payload.currentQuestion?.correct_answer || null);
+        });
+
+        socket.on('poll:correct_answer_toggled', ({ show_correct_answer, correctAnswer }) => {
+          setShowCorrectAnswer(Boolean(show_correct_answer));
+          if (correctAnswer !== undefined) {
+            setCorrectAnswer(correctAnswer);
+          }
         });
 
         socket.on('poll:voting_toggled', (payload) => {
@@ -392,7 +414,21 @@ export default function PollPresenter() {
                     <div>
                       {/* Multiple Choice Chart */}
                       {currentQuestion.question_type === 'multiple_choice' && (
-                        <LiveBarChart results={liveResults?.results || []} />
+                        <div>
+                          <LiveBarChart
+                            results={liveResults?.results || []}
+                            totalVotes={liveResults?.totalVotes || 0}
+                            isPresenter={true}
+                            correctAnswer={correctAnswer}
+                            showCorrectAnswer={showCorrectAnswer}
+                          />
+                          {showCorrectAnswer && correctAnswer && (
+                            <div className="mt-5 p-3.5 sm:p-4 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center justify-center space-x-2.5 text-emerald-900 text-base sm:text-lg font-bold shadow-xs animate-fadeIn">
+                              <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600 shrink-0" />
+                              <span>Correct Answer: <span className="underline decoration-emerald-500 decoration-2 font-black">{correctAnswer}</span></span>
+                            </div>
+                          )}
+                        </div>
                       )}
 
                       {/* Word Cloud */}

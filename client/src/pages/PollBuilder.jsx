@@ -18,6 +18,7 @@ import {
   AlertCircle,
   HelpCircle,
   Check,
+  CheckCircle2,
   RefreshCw,
   Copy
 } from 'lucide-react';
@@ -68,7 +69,8 @@ export default function PollBuilder() {
       question_type: 'multiple_choice',
       options: ['Option 1', 'Option 2'],
       maxRating: 5,
-      allowMultiple: true
+      allowMultiple: true,
+      correctAnswer: null
     }
   ]);
 
@@ -103,13 +105,15 @@ export default function PollBuilder() {
                     if (q.options.allowMultiple !== undefined) allowMulti = Boolean(q.options.allowMultiple);
                   }
                 }
+                const cAns = q.correct_answer || (q.options && typeof q.options === 'object' ? q.options.correctAnswer : null) || null;
                 return {
                   id: q.id,
                   question_text: q.question_text || '',
                   question_type: q.question_type || 'multiple_choice',
                   options: opts,
                   maxRating: maxR,
-                  allowMultiple: allowMulti
+                  allowMultiple: allowMulti,
+                  correctAnswer: cAns
                 };
               })
             );
@@ -135,7 +139,8 @@ export default function PollBuilder() {
         question_type: type,
         options: ['Option 1', 'Option 2'],
         maxRating: 5,
-        allowMultiple: true
+        allowMultiple: true,
+        correctAnswer: null
       }
     ]);
   };
@@ -173,9 +178,16 @@ export default function PollBuilder() {
 
   const updateOption = (qIdx, optIdx, text) => {
     const q = questions[qIdx];
+    const oldVal = (q.options || [])[optIdx];
     const currentOpts = [...(q.options || [])];
     currentOpts[optIdx] = text;
-    updateQuestion(qIdx, 'options', currentOpts);
+    const updated = [...questions];
+    updated[qIdx] = {
+      ...updated[qIdx],
+      options: currentOpts,
+      correctAnswer: q.correctAnswer === oldVal ? text : q.correctAnswer
+    };
+    setQuestions(updated);
   };
 
   const removeOption = (qIdx, optIdx) => {
@@ -185,8 +197,15 @@ export default function PollBuilder() {
       setError('Multiple choice questions require at least two options.');
       return;
     }
-    const updated = currentOpts.filter((_, idx) => idx !== optIdx);
-    updateQuestion(qIdx, 'options', updated);
+    const removedVal = currentOpts[optIdx];
+    const updatedOpts = currentOpts.filter((_, idx) => idx !== optIdx);
+    const updated = [...questions];
+    updated[qIdx] = {
+      ...updated[qIdx],
+      options: updatedOpts,
+      correctAnswer: q.correctAnswer === removedVal ? null : q.correctAnswer
+    };
+    setQuestions(updated);
   };
 
   const validate = () => {
@@ -239,6 +258,7 @@ export default function PollBuilder() {
         question_text: q.question_text.trim(),
         question_type: q.question_type,
         options: q.question_type === 'multiple_choice' ? q.options.map((o) => o.trim()).filter(Boolean) : null,
+        correctAnswer: q.question_type === 'multiple_choice' ? q.correctAnswer || null : null,
         maxRating: q.question_type === 'rating' ? q.maxRating || 5 : null,
         allowMultiple: q.question_type === 'word_cloud' ? (q.allowMultiple !== false) : true
       }))
@@ -562,6 +582,23 @@ export default function PollBuilder() {
                         />
                         <button
                           type="button"
+                          onClick={() => updateQuestion(qIdx, 'correctAnswer', q.correctAnswer === opt ? null : opt)}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1 shrink-0 transition ${
+                            q.correctAnswer === opt && opt.trim() !== ''
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs'
+                              : 'border border-slate-200 text-slate-400 hover:text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50'
+                          }`}
+                          title={q.correctAnswer === opt ? 'Click to unmark correct answer' : 'Mark as correct answer (optional)'}
+                        >
+                          {q.correctAnswer === opt && opt.trim() !== '' ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          ) : (
+                            <Check className="w-3.5 h-3.5" />
+                          )}
+                          <span>{q.correctAnswer === opt && opt.trim() !== '' ? 'Correct' : 'Mark Correct'}</span>
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => removeOption(qIdx, optIdx)}
                           className="p-1 text-slate-400 hover:text-rose-500 rounded hover:bg-white transition-colors"
                           title="Remove option"
@@ -571,14 +608,19 @@ export default function PollBuilder() {
                       </div>
                     ))}
 
-                    <button
-                      type="button"
-                      onClick={() => addOption(qIdx)}
-                      className="mt-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center space-x-1 px-2 py-1 rounded-lg hover:bg-indigo-50/60 transition-colors"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Option</span>
-                    </button>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => addOption(qIdx)}
+                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center space-x-1 px-2 py-1 rounded-lg hover:bg-indigo-50/60 transition-colors w-fit"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Option</span>
+                      </button>
+                      <span className="text-[11px] text-slate-400 italic">
+                        Optional: Click 'Mark Correct' to set a correct answer for quiz-style voting.
+                      </span>
+                    </div>
                   </div>
                 )}
 

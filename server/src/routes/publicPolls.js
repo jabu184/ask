@@ -225,4 +225,40 @@ router.post('/:id/qa/:questionId/upvote', (req, res) => {
   }
 });
 
+/**
+ * POST /api/public/polls/:id/remove-word
+ * Remove a word previously submitted by this participant
+ */
+router.post('/:id/remove-word', (req, res) => {
+  try {
+    const pollId = req.params.id;
+    const { questionId, participantId, voteId } = req.body;
+    if (!questionId || !participantId || !voteId) {
+      return res.status(400).json({ error: 'Missing parameters' });
+    }
+
+    db.prepare('DELETE FROM poll_votes WHERE id = ? AND question_id = ? AND participant_id = ?').run(voteId, questionId, participantId);
+    const participantWords = db.prepare('SELECT id, value, created_at FROM poll_votes WHERE question_id = ? AND participant_id = ? ORDER BY created_at ASC').all(questionId, participantId);
+
+    const question = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(questionId);
+    const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
+    if (question && poll) {
+      const results = computeQuestionResults(question, pollId);
+      const io = getIO();
+      if (io) {
+        io.to(`poll:${pollId}`).emit('poll:results_update', {
+          questionId,
+          results: (poll.show_results === 1) ? results : null,
+          totalVotes: results.totalVotes
+        });
+      }
+    }
+
+    res.json({ success: true, words: participantWords });
+  } catch (err) {
+    console.error('[Public Poll Remove Word Error]', err);
+    res.status(500).json({ error: 'Failed to remove word' });
+  }
+});
+
 module.exports = router;

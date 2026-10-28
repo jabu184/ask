@@ -17,7 +17,8 @@ import {
   Users,
   AlertCircle,
   HelpCircle,
-  Sparkles
+  Sparkles,
+  X
 } from 'lucide-react';
 
 function getParticipantId() {
@@ -43,6 +44,9 @@ export default function PublicPoll() {
   const [liveResults, setLiveResults] = useState(null);
   const [hasVoted, setHasVoted] = useState(false);
   const [userVote, setUserVote] = useState(null);
+  const [myWords, setMyWords] = useState([]);
+  const [showCorrectAnswer, setShowCorrectAnswer] = useState(false);
+  const [correctAnswer, setCorrectAnswer] = useState(null);
   const [votingOpen, setVotingOpen] = useState(true);
   const [showResults, setShowResults] = useState(true);
   const [participantCount, setParticipantCount] = useState(1);
@@ -82,6 +86,9 @@ export default function PublicPoll() {
         setLiveResults(initial.liveResults);
         setHasVoted(initial.hasVoted);
         setUserVote(initial.userVote);
+        setMyWords(initial.userVotes || []);
+        setShowCorrectAnswer(Boolean(initial.poll?.show_correct_answer));
+        setCorrectAnswer(initial.currentQuestion?.correct_answer || null);
         setVotingOpen(initial.poll.voting_open);
         setShowResults(initial.poll.show_results);
         setQaQuestions(initial.qaQuestions || []);
@@ -108,6 +115,13 @@ export default function PublicPoll() {
           setLiveResults(state.liveResults);
           setHasVoted(state.hasVoted);
           setUserVote(state.userVote);
+          if (state.userVotes) setMyWords(state.userVotes);
+          if (state.poll && typeof state.poll.show_correct_answer !== 'undefined') {
+            setShowCorrectAnswer(Boolean(state.poll.show_correct_answer));
+          }
+          if (state.currentQuestion) {
+            setCorrectAnswer(state.currentQuestion.correct_answer || null);
+          }
           setVotingOpen(state.poll.voting_open);
           setShowResults(state.poll.show_results);
           setQaQuestions(state.qaQuestions || []);
@@ -121,6 +135,9 @@ export default function PublicPoll() {
           setLiveResults(data.liveResults);
           setHasVoted(false);
           setUserVote(null);
+          setMyWords([]);
+          setShowCorrectAnswer(false);
+          setCorrectAnswer(data.currentQuestion?.correct_answer || null);
           setTextInput('');
         });
 
@@ -138,6 +155,23 @@ export default function PublicPoll() {
         socket.on('poll:results_update', (data) => {
           if (data.results) {
             setLiveResults(data.results);
+          }
+        });
+
+        socket.on('poll:user_words_updated', ({ words }) => {
+          setMyWords(words || []);
+          if (words && words.length > 0) {
+            setHasVoted(true);
+          } else {
+            setHasVoted(false);
+          }
+          setSubmittingVote(false);
+        });
+
+        socket.on('poll:correct_answer_toggled', ({ show_correct_answer, correctAnswer }) => {
+          setShowCorrectAnswer(Boolean(show_correct_answer));
+          if (correctAnswer !== undefined) {
+            setCorrectAnswer(correctAnswer);
           }
         });
 
@@ -242,6 +276,7 @@ export default function PublicPoll() {
         participantId,
         value: val
       });
+      setTimeout(() => setSubmittingVote(false), 300);
     } else {
       // Fallback via HTTP
       publicPollApi
@@ -254,12 +289,45 @@ export default function PublicPoll() {
           setHasVoted(true);
           setUserVote(val);
           if (res.results) setLiveResults(res.results);
+          if (currentQuestion.question_type === 'word_cloud') {
+            publicPollApi.get(poll.id, participantId).then((data) => {
+              if (data?.userVotes) setMyWords(data.userVotes);
+            });
+          }
         })
         .catch((err) => {
           alert(err.response?.data?.error || 'Failed to submit vote');
         })
         .finally(() => {
           setSubmittingVote(false);
+        });
+    }
+  };
+
+  // Handle removing a participant's own word from the cloud
+  const handleRemoveWord = (voteId) => {
+    setMyWords((prev) => {
+      const next = prev.filter((w) => w.id !== voteId);
+      if (next.length === 0) setHasVoted(false);
+      return next;
+    });
+
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('poll:remove_word', {
+        pollId: poll.id,
+        questionId: currentQuestion.id,
+        participantId,
+        voteId
+      });
+    } else {
+      publicPollApi
+        .removeWord(poll.id, {
+          questionId: currentQuestion.id,
+          participantId,
+          voteId
+        })
+        .catch((err) => {
+          console.error('Failed to remove word', err);
         });
     }
   };
@@ -441,7 +509,12 @@ export default function PublicPoll() {
                       Final Question Results
                     </h3>
                     {currentQuestion?.question_type === 'multiple_choice' && (
-                      <LiveBarChart results={liveResults.results} totalVotes={liveResults.totalVotes} />
+                      <LiveBarChart
+                        results={liveResults.results}
+                        totalVotes={liveResults.totalVotes}
+                        correctAnswer={correctAnswer}
+                        showCorrectAnswer={showCorrectAnswer}
+                      />
                     )}
                     {currentQuestion?.question_type === 'word_cloud' && (
                       <WordCloud words={liveResults.words} />
@@ -485,8 +558,29 @@ export default function PublicPoll() {
                   </div>
                 )}
 
-                {/* Response Status Banner */}
-                {hasVoted && (
+                {/* Response Status / Correct Answer Banner */}
+                {showCorrectAnswer && correctAnswer && currentQuestion.question_type === 'multiple_choice' ? (
+                  <div className={`mb-6 p-4 rounded-2xl border flex items-center gap-3 text-sm font-semibold animate-in fade-in shadow-xs ${
+                    userVote === correctAnswer
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                      : 'bg-amber-50 border-amber-300 text-amber-950'
+                  }`}>
+                    <CheckCircle2 className={`w-5 h-5 shrink-0 ${userVote === correctAnswer ? 'text-emerald-600' : 'text-amber-600'}`} />
+                    <div className="flex-1">
+                      <p className="font-bold">
+                        {userVote === correctAnswer
+                          ? '🎉 You got it right!'
+                          : 'The correct answer has been revealed!'}
+                      </p>
+                      <p className="text-xs font-normal mt-0.5 opacity-90">
+                        Correct Answer: <strong className="font-bold underline decoration-2">{correctAnswer}</strong>
+                        {userVote && userVote !== correctAnswer && (
+                          <span> • Your choice was: <strong>{userVote}</strong></span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                ) : hasVoted && currentQuestion.question_type !== 'word_cloud' ? (
                   <div className="mb-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-3 text-emerald-800 text-sm font-semibold animate-in fade-in">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                     <div className="flex-1">
@@ -499,7 +593,7 @@ export default function PublicPoll() {
                       )}
                     </div>
                   </div>
-                )}
+                ) : null}
 
                 {/* Question Input Form / Options (Active whenever voting is open, allows changing vote) */}
                 {votingOpen ? (
@@ -509,32 +603,46 @@ export default function PublicPoll() {
                       <div className="space-y-2.5">
                         {currentQuestion.options?.map((opt, i) => {
                           const isSelected = String(userVote) === String(opt);
+                          const isCorrect = showCorrectAnswer && Boolean(correctAnswer) && String(opt) === String(correctAnswer);
+
                           return (
                             <button
                               key={i}
                               disabled={submittingVote}
                               onClick={() => handleVote(opt)}
                               className={`w-full text-left p-4 rounded-2xl border-2 transition-all active:scale-99 shadow-xs flex items-center justify-between group ${
-                                isSelected
+                                isCorrect
+                                  ? 'border-emerald-500 bg-emerald-50/80 text-emerald-950 font-bold ring-2 ring-emerald-500/20'
+                                  : isSelected
                                   ? 'border-brand-600 bg-brand-50/70 text-brand-950 font-bold ring-2 ring-brand-500/20'
                                   : 'border-slate-200 hover:border-brand-400 hover:bg-slate-50 text-slate-800 font-semibold'
                               }`}
                             >
                               <div className="flex items-center space-x-3">
                                 <span className={`w-6 h-6 rounded-full border-2 text-xs font-bold flex items-center justify-center transition ${
-                                  isSelected
+                                  isCorrect
+                                    ? 'border-emerald-600 bg-emerald-600 text-white'
+                                    : isSelected
                                     ? 'border-brand-600 bg-brand-600 text-white'
                                     : 'border-slate-300 text-slate-500 group-hover:border-brand-400'
                                 }`}>
-                                  {isSelected ? '✓' : String.fromCharCode(65 + i)}
+                                  {isCorrect ? '✓' : isSelected ? '✓' : String.fromCharCode(65 + i)}
                                 </span>
                                 <span>{opt}</span>
                               </div>
-                              {isSelected && (
-                                <span className="text-xs font-bold text-brand-600 px-2 py-0.5 rounded-full bg-brand-100">
-                                  Your Choice
-                                </span>
-                              )}
+                              <div className="flex items-center space-x-2">
+                                {isCorrect && (
+                                  <span className="text-xs font-bold text-emerald-800 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 flex items-center space-x-1 shadow-2xs">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                    <span>Correct Answer</span>
+                                  </span>
+                                )}
+                                {isSelected && (
+                                  <span className="text-xs font-bold text-brand-600 px-2 py-0.5 rounded-full bg-brand-100">
+                                    Your Choice
+                                  </span>
+                                )}
+                              </div>
                             </button>
                           );
                         })}
@@ -545,62 +653,101 @@ export default function PublicPoll() {
                     {currentQuestion.question_type === 'word_cloud' && (() => {
                       const allowMultiple = currentQuestion.options?.allowMultiple !== false;
                       return (
-                        <form
-                          onSubmit={(e) => {
-                            e.preventDefault();
-                            if (textInput.trim()) {
-                              handleVote(textInput.trim());
-                              setTextInput('');
-                            }
-                          }}
-                          className="space-y-4"
-                        >
-                          <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                              {allowMultiple
-                                ? hasVoted
-                                  ? 'Submit another word (or multiple separated by commas):'
-                                  : 'Enter word(s) or short phrases (comma-separated allowed):'
-                                : hasVoted
-                                ? 'Change your word:'
-                                : 'Enter your word (single submission):'}
-                            </label>
-                            <input
-                              type="text"
-                              maxLength={allowMultiple ? 100 : 35}
-                              value={textInput}
-                              onChange={(e) => setTextInput(e.target.value)}
-                              placeholder={
-                                allowMultiple
-                                  ? 'e.g. Innovative, Fast, Leadership...'
-                                  : 'e.g. Innovative'
+                        <div className="space-y-4">
+                          {/* User's existing words chips */}
+                          {myWords.length > 0 && (
+                            <div className="p-4 rounded-2xl bg-brand-50/60 border border-brand-200 space-y-2">
+                              <div className="flex items-center justify-between text-xs font-bold text-brand-950">
+                                <span className="flex items-center gap-1.5">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-brand-600" />
+                                  <span>Your Submitted Words ({myWords.length})</span>
+                                </span>
+                                {votingOpen && (
+                                  <span className="text-[11px] font-normal text-slate-500">
+                                    Click ✕ to remove any word
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-2 pt-1">
+                                {myWords.map((item) => (
+                                  <span
+                                    key={item.id}
+                                    className="inline-flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-xl bg-white border border-brand-200 text-brand-900 text-xs font-bold shadow-2xs group hover:border-brand-400 transition"
+                                  >
+                                    <span>{item.value}</span>
+                                    {votingOpen && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveWord(item.id)}
+                                        className="p-0.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                                        title={`Remove "${item.value}"`}
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              if (textInput.trim()) {
+                                handleVote(textInput.trim());
+                                setTextInput('');
                               }
-                              className="w-full px-4 py-3.5 rounded-2xl border-2 border-slate-200 focus:border-brand-500 focus:ring-0 text-base font-medium text-slate-900 placeholder:text-slate-400"
-                              autoFocus
-                            />
-                            {allowMultiple && (
-                              <p className="text-[11px] text-slate-500 mt-1.5">
-                                You can submit multiple words to this cloud. Enter one at a time or separate with commas.
-                              </p>
-                            )}
-                          </div>
-                          <button
-                            type="submit"
-                            disabled={!textInput.trim() || submittingVote}
-                            className="w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-base shadow-sm transition active:scale-98 flex items-center justify-center gap-2"
+                            }}
+                            className="space-y-4"
                           >
-                            <Send className="w-4 h-4" />
-                            <span>
-                              {allowMultiple
-                                ? hasVoted
-                                  ? 'Add Another Word'
-                                  : 'Submit Word'
-                                : hasVoted
-                                ? 'Update Word'
-                                : 'Submit Word'}
-                            </span>
-                          </button>
-                        </form>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                {allowMultiple
+                                  ? myWords.length > 0
+                                    ? 'Add another word to the cloud:'
+                                    : 'Enter word(s) or short phrases:'
+                                  : myWords.length > 0
+                                  ? 'Change your word:'
+                                  : 'Enter your word:'}
+                              </label>
+                              <input
+                                type="text"
+                                maxLength={allowMultiple ? 100 : 35}
+                                value={textInput}
+                                onChange={(e) => setTextInput(e.target.value)}
+                                placeholder={
+                                  allowMultiple
+                                    ? 'Type a word and press Enter...'
+                                    : 'e.g. Innovative'
+                                }
+                                className="w-full px-4 py-3.5 rounded-2xl border-2 border-slate-200 focus:border-brand-500 focus:ring-0 text-base font-medium text-slate-900 placeholder:text-slate-400"
+                                autoFocus
+                              />
+                              {allowMultiple && (
+                                <p className="text-[11px] text-slate-500 mt-1.5">
+                                  You can add multiple words sequentially. Each word will appear in the cloud, and you can delete your words anytime.
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              type="submit"
+                              disabled={!textInput.trim() || submittingVote}
+                              className="w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-base shadow-sm transition active:scale-98 flex items-center justify-center gap-2"
+                            >
+                              <Send className="w-4 h-4" />
+                              <span>
+                                {allowMultiple
+                                  ? myWords.length > 0
+                                    ? 'Add Word'
+                                    : 'Submit Word'
+                                  : myWords.length > 0
+                                  ? 'Update Word'
+                                  : 'Submit Word'}
+                              </span>
+                            </button>
+                          </form>
+                        </div>
                       );
                     })()}
 
@@ -658,7 +805,12 @@ export default function PublicPoll() {
                     </div>
 
                     {currentQuestion.question_type === 'multiple_choice' && (
-                      <LiveBarChart results={liveResults.results} totalVotes={liveResults.totalVotes} />
+                      <LiveBarChart
+                        results={liveResults.results}
+                        totalVotes={liveResults.totalVotes}
+                        correctAnswer={correctAnswer}
+                        showCorrectAnswer={showCorrectAnswer}
+                      />
                     )}
 
                     {currentQuestion.question_type === 'word_cloud' && (

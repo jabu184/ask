@@ -101,6 +101,7 @@ function initSchema() {
       current_question_id TEXT,
       voting_open INTEGER DEFAULT 1,
       show_results INTEGER DEFAULT 1,
+      show_correct_answer INTEGER DEFAULT 0,
       qa_enabled INTEGER DEFAULT 1,
       qa_moderation INTEGER DEFAULT 0,
       show_qa_on_screen INTEGER DEFAULT 0,
@@ -116,6 +117,7 @@ function initSchema() {
       question_text TEXT NOT NULL,
       question_type TEXT NOT NULL,
       options_json TEXT,
+      correct_answer TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
     );
@@ -127,7 +129,6 @@ function initSchema() {
       participant_id TEXT NOT NULL,
       value TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(question_id, participant_id),
       FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE,
       FOREIGN KEY (question_id) REFERENCES poll_questions(id) ON DELETE CASCADE
     );
@@ -232,6 +233,48 @@ function initSchema() {
     db.exec(`ALTER TABLE polls ADD COLUMN show_qa_on_screen INTEGER DEFAULT 0`);
   } catch (e) {
     // Column already exists
+  }
+
+  // Ensure show_correct_answer column exists on polls table
+  try {
+    db.exec(`ALTER TABLE polls ADD COLUMN show_correct_answer INTEGER DEFAULT 0`);
+  } catch (e) {
+    // Column already exists
+  }
+
+  // Ensure correct_answer column exists on poll_questions table
+  try {
+    db.exec(`ALTER TABLE poll_questions ADD COLUMN correct_answer TEXT`);
+  } catch (e) {
+    // Column already exists
+  }
+
+  // Migrate poll_votes to remove UNIQUE(question_id, participant_id) if present
+  try {
+    const indexes = db.prepare("PRAGMA index_list(poll_votes)").all();
+    const hasUniqueConstraint = indexes.some(idx => idx.unique === 1 && idx.origin === 'u');
+    if (hasUniqueConstraint) {
+      db.exec(`
+        CREATE TABLE poll_votes_temp (
+          id TEXT PRIMARY KEY,
+          poll_id TEXT NOT NULL,
+          question_id TEXT NOT NULL,
+          participant_id TEXT NOT NULL,
+          value TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE,
+          FOREIGN KEY (question_id) REFERENCES poll_questions(id) ON DELETE CASCADE
+        );
+        INSERT INTO poll_votes_temp SELECT id, poll_id, question_id, participant_id, value, created_at FROM poll_votes;
+        DROP TABLE poll_votes;
+        ALTER TABLE poll_votes_temp RENAME TO poll_votes;
+        CREATE INDEX IF NOT EXISTS idx_poll_votes_poll ON poll_votes(poll_id);
+        CREATE INDEX IF NOT EXISTS idx_poll_votes_question ON poll_votes(question_id);
+      `);
+      console.log('[Database] Migrated poll_votes table to remove single-vote constraint');
+    }
+  } catch (e) {
+    console.warn('[Database] poll_votes migration notice:', e.message);
   }
 
   console.log('[Database] Schema initialized successfully.');
