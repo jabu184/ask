@@ -39,6 +39,12 @@ export default function Navbar() {
           >
             Features
           </Link>
+          <Link
+            to="/p"
+            className="text-sm font-bold text-indigo-600 hover:text-indigo-700 px-3 py-2 rounded-lg hover:bg-indigo-50/70 transition flex items-center space-x-1"
+          >
+            <span>Join Poll</span>
+          </Link>
         </div>
 
         {user ? (

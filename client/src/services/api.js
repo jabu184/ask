@@ -166,4 +166,80 @@ export const adminApi = {
   },
 };
 
+export const pollApi = {
+  list: async () => {
+    const res = await api.get('/polls');
+    return res.data;
+  },
+  get: async (id) => {
+    const res = await api.get(`/polls/${id}`);
+    return res.data;
+  },
+  create: async (data) => {
+    const res = await api.post('/polls', data);
+    return res.data;
+  },
+  update: async (id, data) => {
+    const res = await api.put(`/polls/${id}`, data);
+    return res.data;
+  },
+  delete: async (id) => {
+    const res = await api.delete(`/polls/${id}`);
+    return res.data;
+  },
+  duplicate: async (id) => {
+    const res = await api.post(`/polls/${id}/duplicate`);
+    return res.data;
+  },
+  setStatus: async (id, status) => {
+    const res = await api.post(`/polls/${id}/status`, { status });
+    return res.data;
+  },
+  setQuestion: async (id, question_id) => {
+    const res = await api.post(`/polls/${id}/question`, { question_id });
+    return res.data;
+  },
+  toggleVoting: async (id) => {
+    const res = await api.post(`/polls/${id}/toggle-voting`);
+    return res.data;
+  },
+  toggleResults: async (id) => {
+    const res = await api.post(`/polls/${id}/toggle-results`);
+    return res.data;
+  },
+  getAnalytics: async (id) => {
+    const res = await api.get(`/polls/${id}/analytics`);
+    return res.data;
+  },
+  getCsvExportUrl: (id) => `/api/polls/${id}/export`,
+};
+
+export const publicPollApi = {
+  lookupByCode: async (code, participantId) => {
+    const res = await api.get(`/public/polls/code/${encodeURIComponent(code)}`, {
+      params: { participantId }
+    });
+    return res.data;
+  },
+  get: async (id, participantId) => {
+    const res = await api.get(`/public/polls/${id}`, {
+      params: { participantId }
+    });
+    return res.data;
+  },
+  vote: async (id, data) => {
+    const res = await api.post(`/public/polls/${id}/vote`, data);
+    return res.data;
+  },
+  submitQA: async (id, data) => {
+    const res = await api.post(`/public/polls/${id}/qa`, data);
+    return res.data;
+  },
+  upvoteQA: async (id, questionId, participantId) => {
+    const res = await api.post(`/public/polls/${id}/qa/${questionId}/upvote`, { participantId });
+    return res.data;
+  },
+};
+
 export default api;
+

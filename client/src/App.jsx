@@ -15,6 +15,12 @@ import Features from './pages/Features';
 import Account from './pages/Account';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import PollJoin from './pages/PollJoin';
+import PublicPoll from './pages/PublicPoll';
+import PollPresenter from './pages/PollPresenter';
+import PollBuilder from './pages/PollBuilder';
+import PollHost from './pages/PollHost';
+import PollAnalytics from './pages/PollAnalytics';
 
 function LayoutWithNavbar({ children }) {
   return (
@@ -34,6 +40,11 @@ export default function App() {
         <Routes>
           {/* Public Survey Respondent Experience (no creator chrome) */}
           <Route path="/s/:surveyId" element={<PublicSurvey />} />
+
+          {/* Public Live Poll Experience (Slido-style interactive respondent & screen) */}
+          <Route path="/p" element={<PollJoin />} />
+          <Route path="/p/:code" element={<PublicPoll />} />
+          <Route path="/p/:code/present" element={<PollPresenter />} />
 
           {/* Main Landing / Features Showcase Page */}
           <Route
@@ -118,6 +129,37 @@ export default function App() {
               element={
                 <LayoutWithNavbar>
                   <SurveyAnalytics />
+                </LayoutWithNavbar>
+              }
+            />
+
+            {/* Live Polling Creator Routes */}
+            <Route
+              path="/polls/new"
+              element={
+                <LayoutWithNavbar>
+                  <PollBuilder />
+                </LayoutWithNavbar>
+              }
+            />
+            <Route
+              path="/polls/:id/edit"
+              element={
+                <LayoutWithNavbar>
+                  <PollBuilder />
+                </LayoutWithNavbar>
+              }
+            />
+            {/* Poll Host Studio is full-screen presenter cockpit */}
+            <Route
+              path="/polls/:id/host"
+              element={<PollHost />}
+            />
+            <Route
+              path="/polls/:id/analytics"
+              element={
+                <LayoutWithNavbar>
+                  <PollAnalytics />
                 </LayoutWithNavbar>
               }
             />

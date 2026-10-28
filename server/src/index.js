@@ -1,4 +1,5 @@
 require('dotenv').config();
+const http = require('http');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
@@ -13,9 +14,16 @@ const surveyRoutes = require('./routes/surveys');
 const publicRoutes = require('./routes/public');
 const exportRoutes = require('./routes/export');
 const adminRoutes = require('./routes/admin');
+const pollRoutes = require('./routes/polls');
+const publicPollRoutes = require('./routes/publicPolls');
+const { initPollSocket } = require('./services/pollSocket');
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
+
+// Initialize realtime WebSockets
+initPollSocket(server);
 
 // Trust first proxy (e.g. reverse proxy or docker bridge)
 app.set('trust proxy', 1);
@@ -41,6 +49,9 @@ app.use('/api/surveys', exportRoutes);
 app.use('/api/surveys', surveyRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/polls', pollRoutes);
+app.use('/api/public/polls', publicPollRoutes);
+
 
 // Robots.txt for Search Engines
 app.get('/robots.txt', (req, res) => {
@@ -166,6 +177,45 @@ if (fs.existsSync(clientDistPath)) {
     }
   });
 
+  // Special handler for poll participant URLs (/p/:code) to inject dynamic Open Graph meta tags
+  app.get('/p/:code', (req, res, next) => {
+    const { code } = req.params;
+    const indexPath = path.join(clientDistPath, 'index.html');
+    if (!fs.existsSync(indexPath)) {
+      return next();
+    }
+
+    try {
+      const poll = db.prepare('SELECT title, description FROM polls WHERE UPPER(code) = ?').get(code.toUpperCase());
+      if (!poll) {
+        return res.sendFile(indexPath);
+      }
+
+      let html = fs.readFileSync(indexPath, 'utf8');
+      const pageTitle = `Live Poll: ${poll.title} — Ask by urspace.com`;
+      const pageDesc = poll.description
+        ? poll.description.replace(/["\n\r]/g, ' ').trim().slice(0, 160)
+        : `Join and participate in this live interactive poll on Ask by urspace.com. Join with PIN #${code.toUpperCase()}`;
+      const pageUrl = `https://ask.urspace.com/p/${code}`;
+
+      html = html.replace(/<title>.*?<\/title>/, `<title>${pageTitle}</title>`);
+      html = html.replace(/<meta name="title" content=".*?"\s*\/?>/, `<meta name="title" content="${pageTitle}" />`);
+      html = html.replace(/<meta name="description" content=".*?"\s*\/?>/, `<meta name="description" content="${pageDesc}" />`);
+      html = html.replace(/<link rel="canonical" href=".*?"\s*\/?>/, `<link rel="canonical" href="${pageUrl}" />`);
+      html = html.replace(/<meta property="og:title" content=".*?"\s*\/?>/, `<meta property="og:title" content="${pageTitle}" />`);
+      html = html.replace(/<meta property="og:description" content=".*?"\s*\/?>/, `<meta property="og:description" content="${pageDesc}" />`);
+      html = html.replace(/<meta property="og:url" content=".*?"\s*\/?>/, `<meta property="og:url" content="${pageUrl}" />`);
+      html = html.replace(/<meta name="twitter:title" content=".*?"\s*\/?>/, `<meta name="twitter:title" content="${pageTitle}" />`);
+      html = html.replace(/<meta name="twitter:description" content=".*?"\s*\/?>/, `<meta name="twitter:description" content="${pageDesc}" />`);
+
+      res.type('text/html');
+      return res.send(html);
+    } catch (err) {
+      console.error('[Poll Meta Injection Error]', err);
+      return res.sendFile(indexPath);
+    }
+  });
+
   // Handle SPA routing: redirect unknown non-API paths to index.html
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) {
@@ -184,6 +234,6 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: err.message || 'Internal server error' });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 SurveyLite backend listening on http://0.0.0.0:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Ask by urspace backend & live polling listening on http://0.0.0.0:${PORT}`);
 });

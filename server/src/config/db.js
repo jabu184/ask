@@ -91,6 +91,69 @@ function initSchema() {
       FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS polls (
+      id TEXT PRIMARY KEY,
+      code TEXT UNIQUE NOT NULL,
+      user_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT DEFAULT 'draft',
+      current_question_id TEXT,
+      voting_open INTEGER DEFAULT 1,
+      show_results INTEGER DEFAULT 1,
+      qa_enabled INTEGER DEFAULT 1,
+      qa_moderation INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      closed_at DATETIME,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS poll_questions (
+      id TEXT PRIMARY KEY,
+      poll_id TEXT NOT NULL,
+      order_num INTEGER NOT NULL,
+      question_text TEXT NOT NULL,
+      question_type TEXT NOT NULL,
+      options_json TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS poll_votes (
+      id TEXT PRIMARY KEY,
+      poll_id TEXT NOT NULL,
+      question_id TEXT NOT NULL,
+      participant_id TEXT NOT NULL,
+      value TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(question_id, participant_id),
+      FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE,
+      FOREIGN KEY (question_id) REFERENCES poll_questions(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS poll_qa_questions (
+      id TEXT PRIMARY KEY,
+      poll_id TEXT NOT NULL,
+      participant_id TEXT NOT NULL,
+      author_name TEXT DEFAULT 'Anonymous',
+      question_text TEXT NOT NULL,
+      upvotes INTEGER DEFAULT 0,
+      is_approved INTEGER DEFAULT 1,
+      is_answered INTEGER DEFAULT 0,
+      is_highlighted INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS poll_qa_upvotes (
+      id TEXT PRIMARY KEY,
+      qa_question_id TEXT NOT NULL,
+      participant_id TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(qa_question_id, participant_id),
+      FOREIGN KEY (qa_question_id) REFERENCES poll_qa_questions(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_surveys_user ON surveys(user_id);
     CREATE INDEX IF NOT EXISTS idx_password_resets_token ON password_resets(token_hash);
     CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id);
@@ -100,6 +163,13 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_answers_question ON answers(question_id);
     CREATE INDEX IF NOT EXISTS idx_email_logs_user ON email_logs(user_id);
     CREATE INDEX IF NOT EXISTS idx_email_logs_survey ON email_logs(survey_id);
+    CREATE INDEX IF NOT EXISTS idx_polls_user ON polls(user_id);
+    CREATE INDEX IF NOT EXISTS idx_polls_code ON polls(code);
+    CREATE INDEX IF NOT EXISTS idx_poll_questions_poll ON poll_questions(poll_id);
+    CREATE INDEX IF NOT EXISTS idx_poll_votes_question ON poll_votes(question_id);
+    CREATE INDEX IF NOT EXISTS idx_poll_votes_poll ON poll_votes(poll_id);
+    CREATE INDEX IF NOT EXISTS idx_poll_qa_poll ON poll_qa_questions(poll_id);
+    CREATE INDEX IF NOT EXISTS idx_poll_qa_upvotes ON poll_qa_upvotes(qa_question_id);
   `);
 
   // Migrate surveys table to add email_notifications column if missing
