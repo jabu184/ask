@@ -257,7 +257,7 @@ function getPollState(pollId, participantId = null, isHost = false) {
   const currentQuestion = questions.find(q => q.id === poll.current_question_id) || questions[0] || null;
 
   const isQuestionResultsVisible = currentQuestion ? (currentQuestion.show_results !== 0 && currentQuestion.show_results !== null) : Boolean(poll.show_results);
-  const isQuestionAnswerShown = currentQuestion ? Boolean(currentQuestion.show_correct_answer === 1) : Boolean(poll.show_correct_answer);
+  const isQuestionAnswerShown = currentQuestion ? Boolean(currentQuestion.show_correct_answer === 1 || currentQuestion.answer_revealed === 1) : Boolean(poll.show_correct_answer);
 
   let liveResults = null;
   if (currentQuestion && (isHost || isQuestionResultsVisible)) {
@@ -561,7 +561,7 @@ function initPollSocket(httpServer) {
         if (!question) return;
 
         const qShowResults = (question.show_results !== 0 && question.show_results !== null) ? 1 : 0;
-        const qShowCorrect = (question.show_correct_answer === 1) ? 1 : 0;
+        const qShowCorrect = (question.show_correct_answer === 1 || question.answer_revealed === 1) ? 1 : 0;
 
         db.prepare('UPDATE polls SET current_question_id = ?, voting_open = 1, show_results = ?, show_correct_answer = ? WHERE id = ?')
           .run(questionId, qShowResults, qShowCorrect, pollId);
@@ -743,23 +743,81 @@ function initPollSocket(httpServer) {
         const currentVal = q.answer_revealed === 1 ? 1 : 0;
         const nextVal = typeof marked === 'boolean' ? (marked ? 1 : 0) : (currentVal === 1 ? 0 : 1);
 
-        db.prepare('UPDATE poll_questions SET answer_revealed = ? WHERE id = ?').run(nextVal, questionId);
+        db.prepare('UPDATE poll_questions SET answer_revealed = ?, show_correct_answer = ? WHERE id = ?').run(nextVal, nextVal, questionId);
 
         const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
+        if (poll && poll.current_question_id === questionId) {
+          db.prepare('UPDATE polls SET show_correct_answer = ? WHERE id = ?').run(nextVal, pollId);
+        }
+
         let leaderboard = [];
         if (poll && poll.is_quiz_mode === 1) {
           leaderboard = computePollLeaderboard(pollId);
           io.to(`poll:${pollId}`).emit('poll:leaderboard_update', { leaderboard });
         }
 
+        io.to(`poll:${pollId}`).emit('poll:correct_answer_toggled', {
+          questionId,
+          show_correct_answer: nextVal === 1,
+          correctAnswer: nextVal === 1 ? q.correct_answer : null
+        });
+
         io.to(`poll:${pollId}`).emit('poll:question_marked_toggled', {
           questionId,
           answer_revealed: Boolean(nextVal),
           is_marked: nextVal === 1,
+          show_correct_answer: nextVal === 1,
+          correctAnswer: nextVal === 1 ? q.correct_answer : null,
           leaderboard
         });
       } catch (err) {
         console.error('[Socket Host Toggle Mark Question Error]', err);
+      }
+    });
+
+    socket.on('poll:host_reset_question', ({ pollId, questionId }) => {
+      try {
+        const question = db.prepare('SELECT * FROM poll_questions WHERE id = ? AND poll_id = ?').get(questionId, pollId);
+        if (!question) return;
+
+        db.prepare('DELETE FROM poll_votes WHERE poll_id = ? AND question_id = ?').run(pollId, questionId);
+        db.prepare('UPDATE poll_questions SET answer_revealed = 0, show_correct_answer = 0 WHERE id = ?').run(questionId);
+
+        const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
+        if (poll && poll.current_question_id === questionId) {
+          db.prepare('UPDATE polls SET show_correct_answer = 0, voting_open = 1 WHERE id = ?').run(pollId);
+        }
+
+        const updatedQuestion = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(questionId);
+        const results = computeQuestionResults(updatedQuestion, pollId);
+        let leaderboard = [];
+        if (poll && poll.is_quiz_mode === 1) {
+          leaderboard = computePollLeaderboard(pollId);
+          io.to(`poll:${pollId}`).emit('poll:leaderboard_update', { leaderboard });
+        }
+
+        io.to(`poll:${pollId}`).emit('poll:question_reset', {
+          questionId,
+          pollId,
+          results,
+          totalVotes: 0,
+          leaderboard
+        });
+        io.to(`poll:${pollId}`).emit('poll:results_update', {
+          questionId,
+          results: (question.show_results !== 0) ? results : null,
+          totalVotes: 0
+        });
+        io.to(`poll:${pollId}`).emit('poll:correct_answer_toggled', {
+          questionId,
+          show_correct_answer: false,
+          correctAnswer: null
+        });
+        if (poll && poll.current_question_id === questionId) {
+          io.to(`poll:${pollId}`).emit('poll:voting_toggled', { voting_open: true });
+        }
+      } catch (err) {
+        console.error('[Socket Host Reset Question Error]', err);
       }
     });
 

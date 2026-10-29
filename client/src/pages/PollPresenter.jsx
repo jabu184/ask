@@ -150,9 +150,12 @@ export default function PollPresenter() {
           if (show_correct_answer) {
             setShowResults(true);
           }
-          if (correctAnswer !== undefined) {
-            setCorrectAnswer(correctAnswer);
-          }
+          setCorrectAnswer(show_correct_answer ? (correctAnswer || null) : null);
+          setCurrentQuestion((prev) => (prev && (!questionId || prev.id === questionId) ? {
+            ...prev,
+            show_correct_answer: Boolean(show_correct_answer),
+            correct_answer: show_correct_answer ? (correctAnswer || prev.correct_answer) : null
+          } : prev));
         });
 
         socket.on('poll:leaderboard_toggled', ({ show_leaderboard, leaderboard: lb }) => {
@@ -196,8 +199,41 @@ export default function PollPresenter() {
           setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: false, show_correct_answer: 0 } : prev));
         });
 
-        socket.on('poll:question_marked_toggled', ({ questionId, answer_revealed, leaderboard: lb }) => {
-          setCurrentQuestion((prev) => (prev && prev.id === questionId ? { ...prev, answer_revealed: Boolean(answer_revealed) } : prev));
+        socket.on('poll:question_marked_toggled', ({ questionId, answer_revealed, show_correct_answer, correctAnswer, leaderboard: lb }) => {
+          setCurrentQuestion((prev) => {
+            if (prev && prev.id === questionId) {
+              return {
+                ...prev,
+                answer_revealed: Boolean(answer_revealed),
+                show_correct_answer: Boolean(show_correct_answer),
+                correct_answer: show_correct_answer ? (correctAnswer || prev.correct_answer) : null
+              };
+            }
+            return prev;
+          });
+          if (show_correct_answer !== undefined) {
+            setShowCorrectAnswer(Boolean(show_correct_answer));
+            if (show_correct_answer) setShowResults(true);
+            setCorrectAnswer(show_correct_answer ? (correctAnswer || null) : null);
+          }
+          if (lb) setLeaderboard(lb);
+        });
+
+        socket.on('poll:question_reset', ({ questionId, results, leaderboard: lb }) => {
+          setCurrentQuestion((prev) => {
+            if (prev && prev.id === questionId) {
+              return {
+                ...prev,
+                answer_revealed: false,
+                show_correct_answer: 0,
+                correct_answer: null
+              };
+            }
+            return prev;
+          });
+          setLiveResults(results || null);
+          setShowCorrectAnswer(false);
+          setCorrectAnswer(null);
           if (lb) setLeaderboard(lb);
         });
 

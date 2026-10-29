@@ -227,6 +227,10 @@ export const pollApi = {
     const res = await api.post(`/polls/${id}/toggle-mark`, { questionId, marked });
     return res.data;
   },
+  resetQuestion: async (id, questionId) => {
+    const res = await api.post(`/polls/${id}/questions/${questionId}/reset`);
+    return res.data;
+  },
   getCsvExportUrl: (id) => `/api/polls/${id}/export`,
 };
 

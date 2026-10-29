@@ -61,6 +61,8 @@ export default function PollHost() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [leaderboard, setLeaderboard] = useState([]);
   const [markPromptTargetQId, setMarkPromptTargetQId] = useState(null);
+  const [resetPromptQId, setResetPromptQId] = useState(null);
+  const [resettingQuestion, setResettingQuestion] = useState(false);
 
   // Tab state: 'live' | 'qa' | 'analytics'
   const [activeTab, setActiveTab] = useState('live');
@@ -141,15 +143,51 @@ export default function PollHost() {
           setPoll((prev) => (prev ? { ...prev, current_question_id: data.currentQuestion.id, voting_open: true } : prev));
         });
 
-        socket.on('poll:question_marked_toggled', ({ questionId, answer_revealed, leaderboard: lb }) => {
+        socket.on('poll:question_marked_toggled', ({ questionId, answer_revealed, show_correct_answer, leaderboard: lb }) => {
           setQuestions((prev) =>
-            prev.map((q) => (q.id === questionId ? { ...q, answer_revealed: answer_revealed ? 1 : 0 } : q))
+            prev.map((q) => (q.id === questionId ? {
+              ...q,
+              answer_revealed: answer_revealed ? 1 : 0,
+              show_correct_answer: show_correct_answer ? 1 : 0
+            } : q))
           );
           setCurrentQuestion((prev) =>
             prev && prev.id === questionId
-              ? { ...prev, answer_revealed: answer_revealed ? 1 : 0 }
+              ? {
+                  ...prev,
+                  answer_revealed: answer_revealed ? 1 : 0,
+                  show_correct_answer: show_correct_answer ? 1 : 0
+                }
               : prev
           );
+          if (show_correct_answer !== undefined) {
+            setShowCorrectAnswer(Boolean(show_correct_answer));
+          }
+          if (lb) setLeaderboard(lb);
+        });
+
+        socket.on('poll:question_reset', ({ questionId, results, leaderboard: lb }) => {
+          setQuestions((prev) =>
+            prev.map((q) => (q.id === questionId ? {
+              ...q,
+              results,
+              answer_revealed: 0,
+              show_correct_answer: 0
+            } : q))
+          );
+          setCurrentQuestion((prev) => {
+            if (prev && prev.id === questionId) {
+              return {
+                ...prev,
+                answer_revealed: 0,
+                show_correct_answer: 0
+              };
+            }
+            return prev;
+          });
+          setShowCorrectAnswer(false);
+          setLiveResults(results || null);
+          setPoll((prev) => (prev ? { ...prev, show_correct_answer: false, voting_open: true } : prev));
           if (lb) setLeaderboard(lb);
         });
 
@@ -324,13 +362,18 @@ export default function PollHost() {
     }
     const targetQ = questions.find((q) => q.id === targetQId);
     if (targetQ) {
+      const showCorrect = Boolean(targetQ.show_correct_answer === 1 || targetQ.answer_revealed === 1);
       setCurrentQuestion(targetQ);
-      setShowCorrectAnswer(Boolean(targetQ.show_correct_answer === 1));
-      setPoll((prev) => (prev ? { ...prev, show_results: targetQ.show_results !== false && targetQ.show_results !== 0 } : prev));
+      setShowCorrectAnswer(showCorrect);
+      setPoll((prev) => (prev ? {
+        ...prev,
+        show_results: targetQ.show_results !== false && targetQ.show_results !== 0,
+        show_correct_answer: showCorrect
+      } : prev));
     }
     if (markPreviousAction) {
       setQuestions((prev) =>
-        prev.map((q) => (q.id === currentQuestion?.id ? { ...q, answer_revealed: 1 } : q))
+        prev.map((q) => (q.id === currentQuestion?.id ? { ...q, answer_revealed: 1, show_correct_answer: 1 } : q))
       );
     }
     setMarkPromptTargetQId(null);
@@ -355,10 +398,12 @@ export default function PollHost() {
     const nextMarked = explicitMarked !== null ? explicitMarked : !currentMarked;
 
     setQuestions((prev) =>
-      prev.map((q) => (q.id === qId ? { ...q, answer_revealed: nextMarked ? 1 : 0 } : q))
+      prev.map((q) => (q.id === qId ? { ...q, answer_revealed: nextMarked ? 1 : 0, show_correct_answer: nextMarked ? 1 : 0 } : q))
     );
     if (currentQuestion && currentQuestion.id === qId) {
-      setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: nextMarked ? 1 : 0 } : prev));
+      setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: nextMarked ? 1 : 0, show_correct_answer: nextMarked ? 1 : 0 } : prev));
+      setShowCorrectAnswer(nextMarked);
+      setPoll((prev) => (prev ? { ...prev, show_correct_answer: nextMarked } : prev));
     }
 
     socketRef.current.emit('poll:host_toggle_mark_question', {
@@ -366,6 +411,32 @@ export default function PollHost() {
       questionId: qId,
       marked: nextMarked
     });
+  };
+
+  const handleResetQuestion = async (qId) => {
+    if (!poll || resettingQuestion) return;
+    setResettingQuestion(true);
+    try {
+      if (socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit('poll:host_reset_question', { pollId: id, questionId: qId });
+      } else {
+        await pollApi.resetQuestion(id, qId);
+      }
+      setQuestions((prev) =>
+        prev.map((q) => (q.id === qId ? { ...q, answer_revealed: 0, show_correct_answer: 0, results: null } : q))
+      );
+      if (currentQuestion && currentQuestion.id === qId) {
+        setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: 0, show_correct_answer: 0 } : prev));
+        setShowCorrectAnswer(false);
+        setLiveResults(null);
+        setPoll((prev) => (prev ? { ...prev, show_correct_answer: false, voting_open: true } : prev));
+      }
+      setResetPromptQId(null);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to reset question responses');
+    } finally {
+      setResettingQuestion(false);
+    }
   };
 
   const handlePrevQuestion = () => {
@@ -915,6 +986,20 @@ export default function PollHost() {
                             <span>{q.show_correct_answer === 1 ? 'Answer: Shown' : 'Answer: Hidden'}</span>
                           </button>
                         )}
+
+                        {/* 4. Reset Question Responses */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setResetPromptQId(q.id);
+                          }}
+                          className="px-2 py-0.5 rounded-md text-[10px] font-semibold border flex items-center space-x-1 transition cursor-pointer bg-slate-100 text-slate-500 border-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200"
+                          title="Reset all responses for this question"
+                        >
+                          <RotateCcw className="w-3 h-3 text-slate-400" />
+                          <span>Reset</span>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1053,6 +1138,16 @@ export default function PollHost() {
                         )}
                       </button>
                     )}
+
+                    <button
+                      type="button"
+                      onClick={() => setResetPromptQId(currentQuestion.id)}
+                      className="px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition border border-rose-200 bg-rose-50/70 text-rose-700 hover:bg-rose-100 cursor-pointer"
+                      title="Reset all responses for this question so participants can vote again"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Reset Question</span>
+                    </button>
 
                     {/* Prev / Next buttons */}
                     <div className="flex items-center space-x-1 pl-2 border-l border-slate-200">
@@ -1566,6 +1661,56 @@ export default function PollHost() {
           </div>
         </div>
       )}
+
+      {/* Individual Question Reset Confirmation Modal */}
+      {resetPromptQId && (() => {
+        const targetQ = questions.find((q) => q.id === resetPromptQId) || (currentQuestion?.id === resetPromptQId ? currentQuestion : null);
+        const qIndex = questions.findIndex((q) => q.id === resetPromptQId);
+        const qLabel = qIndex >= 0 ? `Question ${qIndex + 1}` : 'this question';
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-xl border border-slate-200 space-y-5 animate-in zoom-in-95">
+              <div className="flex items-center space-x-3 text-rose-600">
+                <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center shrink-0">
+                  <RotateCcw className="w-6 h-6 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-lg leading-tight">Reset {qLabel} Responses?</h3>
+                  <p className="text-xs text-slate-500">Clear votes and force participants to vote again</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+                {targetQ?.question_text && (
+                  <span className="block font-semibold text-slate-800 mb-1.5 italic">"{targetQ.question_text}"</span>
+                )}
+                This will delete all participant votes and responses for <strong>{qLabel}</strong> only. Answers will be unlocked and users will be required to submit their responses fresh. Other questions will not be affected.
+              </p>
+
+              <div className="flex items-center justify-end space-x-3 pt-2">
+                <button
+                  type="button"
+                  disabled={resettingQuestion}
+                  onClick={() => setResetPromptQId(null)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={resettingQuestion}
+                  onClick={() => handleResetQuestion(resetPromptQId)}
+                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs shadow-sm transition flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{resettingQuestion ? 'Resetting...' : 'Yes, Reset Responses'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Question Navigation: Correct Answer Marking Prompt Modal */}
       {markPromptTargetQId && (

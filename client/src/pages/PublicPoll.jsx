@@ -299,9 +299,52 @@ export default function PublicPoll() {
           }
         });
 
-        socket.on('poll:question_marked_toggled', ({ questionId, answer_revealed, leaderboard: lb }) => {
-          setCurrentQuestion((prev) => (prev && prev.id === questionId ? { ...prev, answer_revealed: Boolean(answer_revealed) } : prev));
+        socket.on('poll:question_marked_toggled', ({ questionId, answer_revealed, show_correct_answer, correctAnswer, leaderboard: lb }) => {
+          setCurrentQuestion((prev) => {
+            if (prev && prev.id === questionId) {
+              return {
+                ...prev,
+                answer_revealed: Boolean(answer_revealed),
+                show_correct_answer: Boolean(show_correct_answer),
+                correct_answer: show_correct_answer ? (correctAnswer || prev.correct_answer) : null
+              };
+            }
+            return prev;
+          });
+          if (show_correct_answer !== undefined) {
+            setShowCorrectAnswer(Boolean(show_correct_answer));
+            setCorrectAnswer(show_correct_answer ? (correctAnswer || null) : null);
+          }
           if (lb) setLeaderboard(lb);
+        });
+
+        socket.on('poll:question_reset', ({ questionId, results }) => {
+          if (savedVotesRef.current) {
+            delete savedVotesRef.current[questionId];
+          }
+          setCurrentQuestion((prev) => {
+            if (prev && prev.id === questionId) {
+              return {
+                ...prev,
+                answer_revealed: false,
+                show_correct_answer: 0,
+                correct_answer: null
+              };
+            }
+            return prev;
+          });
+          setHasVoted(false);
+          setUserVote(null);
+          setMyWords([]);
+          setTextInput('');
+          setShowCorrectAnswer(false);
+          setCorrectAnswer(null);
+          setVotingOpen(true);
+          setLiveResults(results || null);
+          setPoll((prev) => (prev ? { ...prev, show_correct_answer: false, voting_open: true } : prev));
+          if (currentQuestion?.options && Array.isArray(currentQuestion.options)) {
+            setRankedItems([...currentQuestion.options]);
+          }
         });
 
         socket.on('poll:voting_toggled', (data) => {
@@ -337,11 +380,13 @@ export default function PublicPoll() {
 
         socket.on('poll:correct_answer_toggled', ({ show_correct_answer, correctAnswer, questionId }) => {
           setShowCorrectAnswer(Boolean(show_correct_answer));
-          if (correctAnswer !== undefined) {
-            setCorrectAnswer(correctAnswer);
-          }
+          setCorrectAnswer(show_correct_answer ? (correctAnswer || null) : null);
           if (questionId) {
-            setCurrentQuestion((prev) => (prev && prev.id === questionId ? { ...prev, show_correct_answer: Boolean(show_correct_answer) } : prev));
+            setCurrentQuestion((prev) => (prev && prev.id === questionId ? {
+              ...prev,
+              show_correct_answer: Boolean(show_correct_answer),
+              correct_answer: show_correct_answer ? (correctAnswer || prev.correct_answer) : null
+            } : prev));
           }
         });
 

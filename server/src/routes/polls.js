@@ -609,7 +609,11 @@ router.post('/:id/question', (req, res) => {
       return res.status(404).json({ error: 'Question not found in this poll' });
     }
 
-    db.prepare('UPDATE polls SET current_question_id = ?, voting_open = 1 WHERE id = ?').run(question_id, poll.id);
+    const qShowResults = (question.show_results !== 0 && question.show_results !== null) ? 1 : 0;
+    const qShowCorrect = (question.show_correct_answer === 1 || question.answer_revealed === 1) ? 1 : 0;
+
+    db.prepare('UPDATE polls SET current_question_id = ?, voting_open = 1, show_results = ?, show_correct_answer = ? WHERE id = ?')
+      .run(question_id, qShowResults, qShowCorrect, poll.id);
 
     const io = getIO();
     if (io) {
@@ -628,10 +632,16 @@ router.post('/:id/question', (req, res) => {
           order_num: question.order_num,
           question_text: question.question_text,
           question_type: question.question_type,
+          correct_answer: (qShowCorrect === 1) ? (question.correct_answer || null) : null,
+          answer_revealed: Boolean(question.answer_revealed),
+          show_results: Boolean(qShowResults),
+          show_correct_answer: Boolean(qShowCorrect),
           options: parsedOptions
         },
         voting_open: true,
-        liveResults: (poll.show_results === 1) ? results : null
+        show_results: Boolean(qShowResults),
+        show_correct_answer: Boolean(qShowCorrect),
+        liveResults: (qShowResults === 1) ? results : null
       });
     }
 
@@ -719,7 +729,11 @@ router.post('/:id/toggle-mark', (req, res) => {
     const currentVal = q.answer_revealed === 1 ? 1 : 0;
     const nextVal = typeof marked === 'boolean' ? (marked ? 1 : 0) : (currentVal === 1 ? 0 : 1);
 
-    db.prepare('UPDATE poll_questions SET answer_revealed = ? WHERE id = ?').run(nextVal, questionId);
+    db.prepare('UPDATE poll_questions SET answer_revealed = ?, show_correct_answer = ? WHERE id = ?').run(nextVal, nextVal, questionId);
+
+    if (poll.current_question_id === questionId) {
+      db.prepare('UPDATE polls SET show_correct_answer = ? WHERE id = ?').run(nextVal, poll.id);
+    }
 
     let leaderboard = [];
     if (poll.is_quiz_mode === 1) {
@@ -731,10 +745,17 @@ router.post('/:id/toggle-mark', (req, res) => {
       if (poll.is_quiz_mode === 1) {
         io.to(`poll:${poll.id}`).emit('poll:leaderboard_update', { leaderboard });
       }
+      io.to(`poll:${poll.id}`).emit('poll:correct_answer_toggled', {
+        questionId,
+        show_correct_answer: nextVal === 1,
+        correctAnswer: nextVal === 1 ? q.correct_answer : null
+      });
       io.to(`poll:${poll.id}`).emit('poll:question_marked_toggled', {
         questionId,
         answer_revealed: Boolean(nextVal),
         is_marked: nextVal === 1,
+        show_correct_answer: nextVal === 1,
+        correctAnswer: nextVal === 1 ? q.correct_answer : null,
         leaderboard
       });
     }
@@ -743,6 +764,73 @@ router.post('/:id/toggle-mark', (req, res) => {
   } catch (err) {
     console.error('[Poll Toggle Mark Error]', err);
     res.status(500).json({ error: 'Failed to toggle mark' });
+  }
+});
+
+/**
+ * POST /api/polls/:id/questions/:questionId/reset
+ * Reset votes/results for an individual question and unlock it for re-voting
+ */
+router.post('/:id/questions/:questionId/reset', (req, res) => {
+  try {
+    const poll = getAuthorizedPoll(req.params.id, req);
+    if (!poll) return res.status(404).json({ error: 'Poll not found' });
+    if (poll === 'UNAUTHORIZED') return res.status(403).json({ error: 'Unauthorized' });
+
+    const { questionId } = req.params;
+    const question = db.prepare('SELECT * FROM poll_questions WHERE id = ? AND poll_id = ?').get(questionId, poll.id);
+    if (!question) return res.status(404).json({ error: 'Question not found' });
+
+    // 1. Delete all votes for this question
+    db.prepare('DELETE FROM poll_votes WHERE poll_id = ? AND question_id = ?').run(poll.id, questionId);
+
+    // 2. Reset question status flags
+    db.prepare('UPDATE poll_questions SET answer_revealed = 0, show_correct_answer = 0 WHERE id = ?').run(questionId);
+
+    // 3. If this question is currently active, ensure voting is open and correct answer display is reset
+    if (poll.current_question_id === questionId) {
+      db.prepare('UPDATE polls SET show_correct_answer = 0, voting_open = 1 WHERE id = ?').run(poll.id);
+    }
+
+    // 4. Compute empty results and leaderboard
+    const updatedQuestion = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(questionId);
+    const results = computeQuestionResults(updatedQuestion, poll.id);
+    let leaderboard = [];
+    if (poll.is_quiz_mode === 1) {
+      leaderboard = computePollLeaderboard(poll.id);
+    }
+
+    const io = getIO();
+    if (io) {
+      if (poll.is_quiz_mode === 1) {
+        io.to(`poll:${poll.id}`).emit('poll:leaderboard_update', { leaderboard });
+      }
+      io.to(`poll:${poll.id}`).emit('poll:question_reset', {
+        questionId,
+        pollId: poll.id,
+        results,
+        totalVotes: 0,
+        leaderboard
+      });
+      io.to(`poll:${poll.id}`).emit('poll:results_update', {
+        questionId,
+        results: (question.show_results !== 0) ? results : null,
+        totalVotes: 0
+      });
+      io.to(`poll:${poll.id}`).emit('poll:correct_answer_toggled', {
+        questionId,
+        show_correct_answer: false,
+        correctAnswer: null
+      });
+      if (poll.current_question_id === questionId) {
+        io.to(`poll:${poll.id}`).emit('poll:voting_toggled', { voting_open: true });
+      }
+    }
+
+    res.json({ message: 'Question responses reset successfully', questionId, results });
+  } catch (err) {
+    console.error('[Question Reset Error]', err);
+    res.status(500).json({ error: 'Failed to reset question' });
   }
 });
 
