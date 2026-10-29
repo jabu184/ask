@@ -387,6 +387,9 @@ function initPollSocket(httpServer) {
         if (poll.voting_open === 0) {
           return socket.emit('poll:error', { message: 'Voting is currently locked for this question' });
         }
+        if (poll.show_correct_answer === 1) {
+          return socket.emit('poll:error', { message: 'Voting has closed because the correct answer has been revealed' });
+        }
         if (poll.current_question_id !== questionId) {
           return socket.emit('poll:error', { message: 'This question is no longer active' });
         }

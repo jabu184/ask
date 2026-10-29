@@ -1,22 +1,5 @@
 import React from 'react';
 
-const PALETTE = [
-  '#2563eb', // blue
-  '#7c3aed', // violet
-  '#db2777', // pink
-  '#059669', // emerald
-  '#d97706', // amber
-  '#0284c7', // sky
-  '#4f46e5', // indigo
-  '#e11d48', // rose
-  '#0d9488', // teal
-  '#9333ea', // purple
-];
-
-function getColor(index) {
-  return PALETTE[index % PALETTE.length];
-}
-
 export default function WordCloud({ words = [], className = '' }) {
   if (!words || words.length === 0) {
     return (
@@ -31,48 +14,64 @@ export default function WordCloud({ words = [], className = '' }) {
   const minCount = Math.min(...counts);
   const maxCount = Math.max(...counts);
 
-  // Compute font size between 14px and 52px
-  const getFontSize = (count) => {
-    if (maxCount === minCount) return 24;
+  const getPillStyle = (count) => {
+    if (maxCount === minCount) {
+      return 'bg-slate-200/90 text-slate-700 px-4 py-2 rounded-xl text-sm sm:text-base font-bold shadow-2xs';
+    }
     const ratio = (count - minCount) / (maxCount - minCount);
-    return Math.round(14 + ratio * 38);
+    if (ratio >= 0.8) {
+      // Top dominant tier (e.g. "strategy" in screenshot)
+      return 'bg-[#d8e3ed] text-[#0f2d4a] px-6 py-3.5 sm:px-8 sm:py-4.5 rounded-2xl text-3xl sm:text-5xl font-black shadow-xs tracking-tight';
+    }
+    if (ratio >= 0.45) {
+      // Secondary tier (e.g. "teambuilding", "AM tips", "vision" in screenshot)
+      return 'bg-[#e0f2fe] text-[#0284c7] px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl text-lg sm:text-2xl font-extrabold shadow-2xs';
+    }
+    if (ratio >= 0.25) {
+      // Intermediate tier
+      return 'bg-[#e2e8f0] text-slate-800 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-sm sm:text-base font-bold shadow-2xs';
+    }
+    // Baseline single/low-vote tier (e.g. "closing", "activities", "team structure")
+    return 'bg-[#cbd5e1]/90 text-slate-700 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-xl text-xs sm:text-sm font-semibold shadow-2xs';
   };
 
-  const getWeight = (count) => {
-    if (maxCount === minCount) return 'font-semibold';
-    const ratio = (count - minCount) / (maxCount - minCount);
-    if (ratio > 0.6) return 'font-extrabold';
-    if (ratio > 0.3) return 'font-bold';
-    return 'font-medium';
+  // Center-out arrangement so the largest words naturally cluster in the center
+  const centerOutWords = (items) => {
+    if (!items || items.length <= 1) return items;
+    const sorted = [...items].sort((a, b) => b.count - a.count);
+    const result = [];
+    sorted.forEach((item, idx) => {
+      if (idx % 2 === 0) {
+        result.push(item);
+      } else {
+        result.unshift(item);
+      }
+    });
+    return result;
   };
+
+  const displayList = centerOutWords(words);
 
   return (
     <div
-      className={`flex flex-wrap items-center justify-center gap-3 sm:gap-4 p-6 bg-slate-50/70 rounded-2xl border border-slate-100 min-h-[220px] ${className}`}
+      className={`flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 p-6 sm:p-10 bg-white/70 rounded-3xl border border-slate-100 min-h-[220px] max-w-4xl mx-auto ${className}`}
     >
-      {words.map((item, idx) => {
-        const size = getFontSize(item.count);
-        const weight = getWeight(item.count);
-        const color = getColor(idx);
+      {displayList.map((item, idx) => {
+        const pillClasses = getPillStyle(item.count);
 
         return (
-          <span
+          <div
             key={item.text + idx}
-            title={`${item.text}: ${item.count} vote${item.count === 1 ? '' : 's'}`}
-            style={{
-              fontSize: `${size}px`,
-              color,
-              lineHeight: 1.15,
-            }}
-            className={`inline-flex items-center gap-1.5 transition-all duration-300 hover:scale-110 cursor-default select-none px-2 py-1 rounded-lg hover:bg-white/80 hover:shadow-xs ${weight}`}
+            title={`${item.text}: ${item.count} submission${item.count === 1 ? '' : 's'}`}
+            className={`inline-flex items-center gap-2 transition-all duration-300 hover:scale-105 select-none cursor-default ${pillClasses}`}
           >
-            {item.text}
+            <span>{item.text}</span>
             {item.count > 1 && (
-              <span className="text-[10px] bg-slate-200/80 text-slate-700 rounded-full px-1.5 py-0.2 font-normal">
-                {item.count}
+              <span className="text-[10px] sm:text-xs opacity-75 font-normal">
+                ({item.count})
               </span>
             )}
-          </span>
+          </div>
         );
       })}
     </div>

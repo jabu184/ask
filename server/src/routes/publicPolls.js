@@ -72,6 +72,9 @@ router.post('/:id/vote', (req, res) => {
     if (poll.voting_open === 0) {
       return res.status(400).json({ error: 'Voting is currently closed for this question' });
     }
+    if (poll.show_correct_answer === 1) {
+      return res.status(403).json({ error: 'Voting has closed because the correct answer has been revealed' });
+    }
     if (poll.current_question_id !== questionId) {
       return res.status(400).json({ error: 'This question is no longer active' });
     }

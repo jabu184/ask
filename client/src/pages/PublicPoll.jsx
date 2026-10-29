@@ -367,7 +367,7 @@ export default function PublicPoll() {
 
   // Handle vote submit
   const handleVote = (val) => {
-    if (!poll || !currentQuestion || !votingOpen || submittingVote) return;
+    if (!poll || !currentQuestion || !votingOpen || submittingVote || showCorrectAnswer) return;
     setSubmittingVote(true);
 
     if (socketRef.current && socketRef.current.connected) {
@@ -407,6 +407,7 @@ export default function PublicPoll() {
 
   // Handle removing a participant's own word from the cloud
   const handleRemoveWord = (voteId) => {
+    if (showCorrectAnswer) return;
     setMyWords((prev) => {
       const next = prev.filter((w) => w.id !== voteId);
       if (next.length === 0) setHasVoted(false);
@@ -877,9 +878,11 @@ export default function PublicPoll() {
                           return (
                             <button
                               key={i}
-                              disabled={submittingVote}
+                              disabled={submittingVote || showCorrectAnswer}
                               onClick={() => handleVote(opt)}
-                              className={`w-full text-left p-4 rounded-2xl border-2 transition-all active:scale-99 shadow-xs flex items-center justify-between group ${
+                              className={`w-full text-left p-4 rounded-2xl border-2 transition-all shadow-xs flex items-center justify-between group ${
+                                showCorrectAnswer ? 'cursor-default' : 'active:scale-99'
+                              } ${
                                 isCorrect
                                   ? 'border-emerald-500 bg-emerald-50/80 text-emerald-950 font-bold ring-2 ring-emerald-500/20'
                                   : isIncorrectChoice
@@ -939,7 +942,7 @@ export default function PublicPoll() {
                                   <CheckCircle2 className="w-3.5 h-3.5 text-brand-600" />
                                   <span>Your Submitted Words ({myWords.length})</span>
                                 </span>
-                                {votingOpen && (
+                                {votingOpen && !showCorrectAnswer && (
                                   <span className="text-[11px] font-normal text-slate-500">
                                     Click ✕ to remove any word
                                   </span>
@@ -952,7 +955,7 @@ export default function PublicPoll() {
                                     className="inline-flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-xl bg-white border border-brand-200 text-brand-900 text-xs font-bold shadow-2xs group hover:border-brand-400 transition"
                                   >
                                     <span>{item.value}</span>
-                                    {votingOpen && (
+                                    {votingOpen && !showCorrectAnswer && (
                                       <button
                                         type="button"
                                         onClick={() => handleRemoveWord(item.id)}
@@ -971,6 +974,7 @@ export default function PublicPoll() {
                           <form
                             onSubmit={(e) => {
                               e.preventDefault();
+                              if (showCorrectAnswer) return;
                               const trimmed = textInput.trim();
                               if (trimmed) {
                                 const isDuplicate = myWords.some((w) => w.value.toLowerCase() === trimmed.toLowerCase());
@@ -996,16 +1000,19 @@ export default function PublicPoll() {
                                 type="text"
                                 maxLength={allowMultiple ? 100 : 35}
                                 value={textInput}
+                                disabled={!votingOpen || showCorrectAnswer}
                                 onChange={(e) => setTextInput(e.target.value)}
                                 placeholder={
-                                  allowMultiple
+                                  showCorrectAnswer
+                                    ? 'Voting is locked for this question'
+                                    : allowMultiple
                                     ? 'Type a word and press Enter...'
                                     : 'e.g. Innovative'
                                 }
-                                className="w-full px-4 py-3.5 rounded-2xl border-2 border-slate-200 focus:border-brand-500 focus:ring-0 text-base font-medium text-slate-900 placeholder:text-slate-400"
+                                className="w-full px-4 py-3.5 rounded-2xl border-2 border-slate-200 focus:border-brand-500 focus:ring-0 text-base font-medium text-slate-900 placeholder:text-slate-400 disabled:bg-slate-50 disabled:cursor-not-allowed"
                                 autoFocus
                               />
-                              {allowMultiple && (
+                              {allowMultiple && !showCorrectAnswer && (
                                 <p className="text-[11px] text-slate-500 mt-1.5">
                                   You can add multiple words sequentially. Each word will appear in the cloud, and you can delete your words anytime.
                                 </p>
@@ -1013,12 +1020,14 @@ export default function PublicPoll() {
                             </div>
                             <button
                               type="submit"
-                              disabled={!textInput.trim() || submittingVote}
+                              disabled={!textInput.trim() || submittingVote || showCorrectAnswer}
                               className="w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-base shadow-sm transition active:scale-98 flex items-center justify-center gap-2"
                             >
                               <Send className="w-4 h-4" />
                               <span>
-                                {allowMultiple
+                                {showCorrectAnswer
+                                  ? 'Voting Locked'
+                                  : allowMultiple
                                   ? myWords.length > 0
                                     ? 'Add Word'
                                     : 'Submit Word'
@@ -1036,7 +1045,7 @@ export default function PublicPoll() {
                     {currentQuestion.question_type === 'rating' && (
                       <div className="py-2">
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 text-center">
-                          {hasVoted ? 'Change your rating anytime:' : 'Select your rating (1 to 5):'}
+                          {showCorrectAnswer ? 'Voting is locked:' : hasVoted ? 'Change your rating anytime:' : 'Select your rating (1 to 5):'}
                         </label>
                         <div className="flex items-center justify-center gap-2 sm:gap-4">
                           {[1, 2, 3, 4, 5].map((star) => {
@@ -1045,9 +1054,11 @@ export default function PublicPoll() {
                             return (
                               <button
                                 key={star}
-                                disabled={submittingVote}
+                                disabled={submittingVote || showCorrectAnswer}
                                 onClick={() => handleVote(String(star))}
-                                className={`flex flex-col items-center justify-center w-14 h-16 sm:w-16 sm:h-20 rounded-2xl border-2 transition-all active:scale-95 group shadow-xs ${
+                                className={`flex flex-col items-center justify-center w-14 h-16 sm:w-16 sm:h-20 rounded-2xl border-2 transition-all group shadow-xs ${
+                                  showCorrectAnswer ? 'cursor-default' : 'active:scale-95'
+                                } ${
                                   isSelected
                                     ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-400/30'
                                     : 'border-slate-200 hover:border-amber-400 hover:bg-amber-50/50'
@@ -1099,7 +1110,7 @@ export default function PublicPoll() {
                               <div className="flex items-center gap-1 shrink-0">
                                 <button
                                   type="button"
-                                  disabled={idx === 0 || submittingVote}
+                                  disabled={idx === 0 || submittingVote || showCorrectAnswer}
                                   onClick={() => moveRankItem(idx, 'up')}
                                   className="p-2 rounded-xl bg-slate-100 hover:bg-brand-50 text-slate-600 hover:text-brand-600 disabled:opacity-25 transition active:scale-95"
                                   title="Move Up"
@@ -1108,7 +1119,7 @@ export default function PublicPoll() {
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={idx === rankedItems.length - 1 || submittingVote}
+                                  disabled={idx === rankedItems.length - 1 || submittingVote || showCorrectAnswer}
                                   onClick={() => moveRankItem(idx, 'down')}
                                   className="p-2 rounded-xl bg-slate-100 hover:bg-brand-50 text-slate-600 hover:text-brand-600 disabled:opacity-25 transition active:scale-95"
                                   title="Move Down"
@@ -1122,12 +1133,12 @@ export default function PublicPoll() {
 
                         <button
                           type="button"
-                          disabled={submittingVote || rankedItems.length === 0}
+                          disabled={submittingVote || showCorrectAnswer || rankedItems.length === 0}
                           onClick={() => handleVote(rankedItems)}
                           className="w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-sm shadow-sm transition active:scale-98 flex items-center justify-center gap-2"
                         >
                           <CheckCircle2 className="w-4 h-4" />
-                          <span>{hasVoted ? 'Update Ranking' : 'Submit Ranking'}</span>
+                          <span>{showCorrectAnswer ? 'Voting Locked' : hasVoted ? 'Update Ranking' : 'Submit Ranking'}</span>
                         </button>
                       </div>
                     )}
@@ -1139,24 +1150,31 @@ export default function PublicPoll() {
                   <div className={`mt-5 p-4 rounded-2xl border flex items-center gap-3 text-sm font-semibold animate-in fade-in shadow-xs ${
                     userVote === correctAnswer
                       ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
-                      : 'bg-rose-50 border-rose-300 text-rose-950'
+                      : userVote
+                      ? 'bg-rose-50 border-rose-300 text-rose-950'
+                      : 'bg-slate-50 border-slate-300 text-slate-800'
                   }`}>
                     {userVote === correctAnswer ? (
                       <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
-                    ) : (
+                    ) : userVote ? (
                       <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
+                    ) : (
+                      <CheckCircle2 className="w-5 h-5 shrink-0 text-slate-500" />
                     )}
                     <div className="flex-1">
                       <p className="font-bold">
                         {userVote === correctAnswer
                           ? '🎉 You got it right!'
-                          : 'Your choice was incorrect.'}
+                          : userVote
+                          ? 'Your choice was incorrect.'
+                          : 'Voting is closed for this question.'}
                       </p>
                       <p className="text-xs font-normal mt-0.5 opacity-90">
                         Correct Answer: <strong className="font-bold underline decoration-2">{correctAnswer}</strong>
                         {userVote && userVote !== correctAnswer && (
                           <span> • You answered: <strong>{userVote}</strong></span>
                         )}
+                        {!userVote && <span> • You did not submit a vote before the answer was revealed.</span>}
                       </p>
                     </div>
                   </div>
@@ -1170,7 +1188,7 @@ export default function PublicPoll() {
                           Current choice: <strong className="font-bold">
                             {Array.isArray(userVote) ? 'Your custom ranking' : userVote}
                           </strong>
-                          {votingOpen && ' • You can update your answer anytime above'}
+                          {votingOpen && !showCorrectAnswer ? ' • You can update your answer anytime above' : ' • Voting is finalized'}
                         </p>
                       )}
                     </div>

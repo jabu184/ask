@@ -230,7 +230,7 @@ export default function Features() {
               </div>
               <h3 className="text-base font-bold text-slate-900 mb-2">Word Clouds & Ranked Voting</h3>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Watch animated word clouds scale with crowd frequency, collect collective priority rankings with Borda count, and reveal live percentage bar charts as answers stream in.
+                Watch animated word clouds scale with crowd frequency, collect collective priority rankings, and reveal live percentage bar charts as answers stream in.
               </p>
             </div>
 

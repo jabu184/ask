@@ -50,7 +50,7 @@ const QUESTION_TYPES = [
   {
     type: 'ranking',
     label: 'Rank Order',
-    desc: 'Respondents rank options; collective Borda scores',
+    desc: 'Respondents rank options; collective ranking results',
     icon: ListOrdered,
     color: 'text-emerald-600 bg-emerald-50 border-emerald-200'
   }
@@ -69,6 +69,7 @@ export default function PollBuilder() {
   const [description, setDescription] = useState('');
   const [code, setCode] = useState('');
   const [isQuizMode, setIsQuizMode] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(true);
   const [qaEnabled, setQaEnabled] = useState(true);
   const [qaModeration, setQaModeration] = useState(false);
 
@@ -99,6 +100,9 @@ export default function PollBuilder() {
           setDescription(p.description || '');
           setCode(p.code || '');
           setIsQuizMode(Boolean(p.is_quiz_mode));
+          if (typeof p.show_leaderboard !== 'undefined') {
+            setShowLeaderboard(Boolean(p.show_leaderboard));
+          }
           setQaEnabled(Boolean(p.qa_enabled));
           setQaModeration(Boolean(p.qa_moderation));
 
@@ -263,6 +267,7 @@ export default function PollBuilder() {
       description: description.trim(),
       code: code.trim().toUpperCase(),
       is_quiz_mode: isQuizMode,
+      show_leaderboard: showLeaderboard ? 1 : 0,
       qa_enabled: qaEnabled,
       qa_moderation: qaModeration,
       questions: questions.map((q) => ({
@@ -433,32 +438,56 @@ export default function PollBuilder() {
           {/* Quiz Mode & Q&A Settings */}
           <div className="mt-6 pt-6 border-t border-slate-100 space-y-4">
             {/* Quiz Mode Banner Toggle */}
-            <label className={`flex items-start space-x-3.5 p-4 rounded-2xl border-2 cursor-pointer transition-all ${
+            <div className={`p-4 rounded-2xl border-2 transition-all ${
               isQuizMode
-                ? 'border-indigo-600 bg-indigo-50/60 shadow-xs'
+                ? 'border-indigo-600 bg-indigo-50/60 shadow-xs space-y-3'
                 : 'border-slate-200 hover:bg-slate-50'
             }`}>
-              <input
-                type="checkbox"
-                checked={isQuizMode}
-                onChange={(e) => setIsQuizMode(e.target.checked)}
-                className="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
-              />
-              <div className="flex-1">
-                <div className="flex items-center space-x-2">
-                  <Trophy className={`w-4 h-4 ${isQuizMode ? 'text-indigo-600' : 'text-slate-400'}`} />
-                  <span className="text-sm font-bold text-slate-900">
-                    Enable Quiz Mode (Player Names, Avatars & Leaderboard)
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 uppercase tracking-wider">
-                    Interactive Quiz
+              <label className="flex items-start space-x-3.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isQuizMode}
+                  onChange={(e) => setIsQuizMode(e.target.checked)}
+                  className="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center space-x-2">
+                    <Trophy className={`w-4 h-4 ${isQuizMode ? 'text-indigo-600' : 'text-slate-400'}`} />
+                    <span className="text-sm font-bold text-slate-900">
+                      Enable Quiz Mode (Player Names, Avatars & Leaderboard)
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 uppercase tracking-wider">
+                      Interactive Quiz
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-500 mt-1 block leading-relaxed">
+                    Participants must choose a nickname and avatar before viewing questions. Answers with a designated correct answer score points toward a live leaderboard that the host can display.
                   </span>
                 </div>
-                <span className="text-xs text-slate-500 mt-1 block leading-relaxed">
-                  Participants must choose a nickname and avatar before viewing questions. Answers with a designated correct answer score points toward a live leaderboard that the host can display.
-                </span>
-              </div>
-            </label>
+              </label>
+
+              {/* Presenter Live Leaderboard Toggle (when Quiz Mode is active) */}
+              {isQuizMode && (
+                <div className="pt-3 border-t border-indigo-200/60 pl-7">
+                  <label className="flex items-start space-x-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showLeaderboard}
+                      onChange={(e) => setShowLeaderboard(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-indigo-950 block">
+                        Display Live Leaderboard on Presenter Screen (Top 5 in side column)
+                      </span>
+                      <span className="text-[11px] text-indigo-800/80 block mt-0.5">
+                        Shows the top 5 scoring participants on the presenter display, sitting alongside the active question (stacked above audience Q&amp;A if both are enabled).
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              )}
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label className="flex items-start space-x-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors">

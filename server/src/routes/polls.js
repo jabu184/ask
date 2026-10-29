@@ -79,6 +79,8 @@ router.post('/', (req, res) => {
       qa_moderation = false,
       is_quiz_mode = false,
       isQuizMode = false,
+      show_leaderboard = true,
+      showLeaderboard = true,
       questions = []
     } = req.body;
 
@@ -109,13 +111,16 @@ router.post('/', (req, res) => {
 
     const pollId = generateId();
     const quizModeVal = (is_quiz_mode || isQuizMode) ? 1 : 0;
+    const showLeaderboardVal = (show_leaderboard !== undefined || showLeaderboard !== undefined)
+      ? ((show_leaderboard || showLeaderboard) ? 1 : 0)
+      : 1;
 
     const insertTransaction = db.transaction(() => {
       let firstQuestionId = null;
 
       db.prepare(`
-        INSERT INTO polls (id, code, user_id, title, description, status, current_question_id, voting_open, show_results, is_quiz_mode, qa_enabled, qa_moderation)
-        VALUES (?, ?, ?, ?, ?, 'draft', NULL, 1, 1, ?, ?, ?)
+        INSERT INTO polls (id, code, user_id, title, description, status, current_question_id, voting_open, show_results, is_quiz_mode, show_leaderboard, qa_enabled, qa_moderation)
+        VALUES (?, ?, ?, ?, ?, 'draft', NULL, 1, 1, ?, ?, ?, ?)
       `).run(
         pollId,
         pollCode,
@@ -123,6 +128,7 @@ router.post('/', (req, res) => {
         title.trim(),
         description ? description.trim() : null,
         quizModeVal,
+        showLeaderboardVal,
         qa_enabled ? 1 : 0,
         qa_moderation ? 1 : 0
       );
@@ -288,6 +294,8 @@ router.put('/:id', (req, res) => {
       qa_moderation,
       is_quiz_mode,
       isQuizMode,
+      show_leaderboard,
+      showLeaderboard,
       questions
     } = req.body;
 
@@ -306,6 +314,10 @@ router.put('/:id', (req, res) => {
       ? ((is_quiz_mode || isQuizMode) ? 1 : 0)
       : poll.is_quiz_mode;
 
+    const showLeaderboardVal = (show_leaderboard !== undefined || showLeaderboard !== undefined)
+      ? ((show_leaderboard || showLeaderboard) ? 1 : 0)
+      : poll.show_leaderboard;
+
     const updateTx = db.transaction(() => {
       db.prepare(`
         UPDATE polls SET
@@ -313,6 +325,7 @@ router.put('/:id', (req, res) => {
           description = ?,
           code = ?,
           is_quiz_mode = ?,
+          show_leaderboard = ?,
           qa_enabled = ?,
           qa_moderation = ?
         WHERE id = ?
@@ -321,6 +334,7 @@ router.put('/:id', (req, res) => {
         description !== undefined ? (description ? description.trim() : null) : poll.description,
         pollCode,
         quizModeVal,
+        showLeaderboardVal,
         qa_enabled !== undefined ? (qa_enabled ? 1 : 0) : poll.qa_enabled,
         qa_moderation !== undefined ? (qa_moderation ? 1 : 0) : poll.qa_moderation,
         poll.id

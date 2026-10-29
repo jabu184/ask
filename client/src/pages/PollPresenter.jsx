@@ -184,6 +184,10 @@ export default function PollPresenter() {
           setShowLeaderboard(false);
         });
 
+        socket.on('poll:status_changed', ({ status }) => {
+          setPoll((prev) => (prev ? { ...prev, status } : prev));
+        });
+
         // Remote Q&A sidebar toggle from host
         socket.on('poll:qa_display_toggled', ({ show_qa }) => {
           setShowQaSidebar(Boolean(show_qa));
@@ -295,6 +299,8 @@ export default function PollPresenter() {
     .sort((a, b) => (b.is_highlighted || 0) - (a.is_highlighted || 0) || (b.upvotes || 0) - (a.upvotes || 0));
 
   const highlightedQa = qaQuestions.find((q) => q.is_highlighted === 1 && !q.is_answered);
+  const isLive = poll.status === 'live';
+  const showSideColumn = isLive && ((Boolean(isQuizMode) && Boolean(showLeaderboard)) || (Boolean(poll.qa_enabled) && Boolean(showQaSidebar)));
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col justify-between font-sans selection:bg-brand-500 selection:text-white">
@@ -316,10 +322,17 @@ export default function PollPresenter() {
               {poll.title}
             </h1>
             <div className="flex items-center space-x-2 text-xs text-slate-500">
-              <span className="inline-flex items-center text-emerald-700 font-semibold">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />
-                Live Presentation
-              </span>
+              {isLive ? (
+                <span className="inline-flex items-center text-emerald-700 font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />
+                  Live Presentation
+                </span>
+              ) : (
+                <span className="inline-flex items-center text-slate-500 font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 mr-1.5" />
+                  Lobby / Not Yet Live
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -334,8 +347,8 @@ export default function PollPresenter() {
             <span className="text-slate-500 hidden sm:inline">Voters</span>
           </div>
 
-          {/* Quiz Leaderboard Toggle Button */}
-          {isQuizMode && (
+          {/* Quiz Leaderboard Toggle Button (Live Mode only) */}
+          {isLive && isQuizMode && (
             <button
               type="button"
               onClick={() => setShowLeaderboard((prev) => !prev)}
@@ -344,15 +357,15 @@ export default function PollPresenter() {
                   ? 'bg-amber-500 border-amber-600 text-white shadow-sm'
                   : 'bg-white border-slate-200 text-amber-800 hover:bg-amber-50'
               }`}
-              title="Toggle Quiz Leaderboard View"
+              title="Toggle Live Leaderboard on Presenter Screen"
             >
               <Trophy className={`w-3.5 h-3.5 ${showLeaderboard ? 'text-white' : 'text-amber-500'}`} />
               <span>Leaderboard{leaderboard.length > 0 ? ` (${leaderboard.length})` : ''}</span>
             </button>
           )}
 
-          {/* Q&A Sidebar Toggle Button */}
-          {poll.qa_enabled && (
+          {/* Q&A Sidebar Toggle Button (Live Mode only) */}
+          {isLive && poll.qa_enabled && (
             <button
               type="button"
               onClick={() => setShowQaSidebar((prev) => !prev)}
@@ -380,336 +393,356 @@ export default function PollPresenter() {
         </div>
       </header>
 
-      {/* Main Stage Grid: Join Card + Active Question Stage (+ Optional Q&A Sidebar) */}
-      <main className="flex-1 px-4 sm:px-8 py-6 max-w-7xl mx-auto w-full flex flex-col justify-center">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-          
-          {/* 1. Large High-Visibility QR Code & Join Card */}
-          <div className={`${showQaSidebar ? 'lg:col-span-3' : 'lg:col-span-4'} flex flex-col`}>
-            <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 shadow-sm text-center flex flex-col justify-between h-full">
-              <div>
-                <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200 text-xs font-bold uppercase tracking-wider mb-3">
-                  <QrCode className="w-3.5 h-3.5" />
-                  <span>Join on Your Phone</span>
-                </div>
+      {/* Main Presentation Stage */}
+      {!isLive ? (
+        /* Pre-Live Joining Lobby (centered in view) */
+        <main className="flex-1 px-4 sm:px-8 py-8 max-w-3xl mx-auto w-full flex flex-col items-center justify-center">
+          <div className="bg-white rounded-3xl border border-slate-200/90 p-8 sm:p-10 shadow-sm text-center w-full space-y-6 animate-fadeIn">
+            <div className="space-y-2">
+              <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-200 text-xs font-bold uppercase tracking-wider">
+                <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
+                <span>Waiting for Host to Start</span>
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                {poll.title}
+              </h2>
+              <p className="text-sm text-slate-500 max-w-md mx-auto">
+                Scan the QR code with your phone camera or visit the link below to join. Questions will appear as soon as the host starts!
+              </p>
+            </div>
 
-                {/* Prominent High-Contrast QR Code */}
-                {qrDataUrl ? (
-                  <div className="p-3 bg-white rounded-2xl border border-slate-200 inline-block mb-3 shadow-xs">
-                    <img
-                      src={qrDataUrl}
-                      alt="Scan to join poll"
-                      className="w-48 h-48 sm:w-56 sm:h-56 object-contain mx-auto"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-48 h-48 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3 animate-pulse">
-                    <QrCode className="w-12 h-12 text-slate-400" />
-                  </div>
-                )}
+            {/* Centered Large High-Contrast QR Code */}
+            <div className="inline-block p-4 bg-white rounded-3xl border-2 border-slate-200 shadow-xs">
+              {qrDataUrl ? (
+                <img
+                  src={qrDataUrl}
+                  alt="Scan to join poll"
+                  className="w-56 h-56 sm:w-64 sm:h-64 object-contain mx-auto"
+                />
+              ) : (
+                <div className="w-56 h-56 bg-slate-100 rounded-2xl flex items-center justify-center animate-pulse">
+                  <QrCode className="w-14 h-14 text-slate-400" />
+                </div>
+              )}
+            </div>
 
-                <div className="text-xs font-medium text-slate-500 mb-1">
-                  1. Scan with phone camera, or visit:
-                </div>
-                <div className="text-sm font-bold text-slate-900 font-mono mb-2">
-                  ask.urspace.com/p
-                </div>
+            {/* Instructions & PIN */}
+            <div className="space-y-2 max-w-md mx-auto">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Or join on any device at:
               </div>
-
-              {/* Event PIN Box */}
-              <div className="bg-slate-900 text-white rounded-xl p-3 shadow-inner">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
+              <div className="text-lg sm:text-xl font-bold text-brand-700 font-mono">
+                ask.urspace.com/p
+              </div>
+              <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-inner mt-2">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                   Event PIN
                 </div>
-                <div className="text-2xl sm:text-3xl font-black font-mono tracking-widest text-white">
+                <div className="text-3xl sm:text-4xl font-black font-mono tracking-widest text-white">
                   {poll.code}
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* 2. Main Question & Live Results Stage (or Quiz Leaderboard) */}
-          <div className={`${showQaSidebar ? 'lg:col-span-6' : 'lg:col-span-8'} flex flex-col`}>
-            {showLeaderboard ? (
-              <div className="bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-8 shadow-sm flex flex-col justify-between h-full space-y-6 animate-fadeIn">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold flex items-center space-x-1.5 shadow-2xs">
-                      <Trophy className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Quiz Leaderboard</span>
-                    </span>
-                    <span className="text-xs font-semibold text-slate-500">
-                      {leaderboard.length} Players Ranked
-                    </span>
-                  </div>
-
-                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                    Current Leaderboard Standings
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Scores update in real-time as questions with correct answers are answered!
-                  </p>
-                </div>
-
-                {/* Podium & Rankings */}
-                <div className="flex-1 flex flex-col justify-center py-2">
-                  {leaderboard.length === 0 ? (
-                    <div className="py-12 text-center bg-slate-50 rounded-2xl border border-slate-100">
-                      <Trophy className="w-12 h-12 text-amber-300 mx-auto mb-3" />
-                      <h3 className="text-lg font-bold text-slate-800">No Points Yet</h3>
-                      <p className="text-xs text-slate-500">Participants will appear here once questions are answered correctly.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {/* Top 3 Podium */}
-                      <div className="grid grid-cols-3 gap-3 sm:gap-4 items-end pt-2">
-                        {/* 2nd Place */}
-                        {leaderboard[1] ? (
-                          <div className="bg-slate-50 border-2 border-slate-300 rounded-2xl p-4 sm:p-5 text-center flex flex-col items-center shadow-xs">
-                            <span className="text-2xl sm:text-3xl mb-1">🥈</span>
-                            <span className="text-3xl sm:text-4xl mb-2">{leaderboard[1].avatar || '🚀'}</span>
-                            <span className="text-xs sm:text-sm font-bold text-slate-900 truncate max-w-full">
-                              {leaderboard[1].name}
-                            </span>
-                            <span className="mt-1 px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-800 text-xs font-extrabold">
-                              {leaderboard[1].score} {leaderboard[1].score === 1 ? 'pt' : 'pts'}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="opacity-0" />
-                        )}
-
-                        {/* 1st Place (Center, elevated) */}
-                        {leaderboard[0] ? (
-                          <div className="bg-gradient-to-b from-amber-50 to-amber-100/60 border-2 border-amber-400 rounded-2xl p-5 sm:p-6 text-center flex flex-col items-center shadow-md -translate-y-2">
-                            <span className="text-3xl sm:text-4xl mb-1">🥇</span>
-                            <span className="text-4xl sm:text-5xl mb-2">{leaderboard[0].avatar || '🚀'}</span>
-                            <span className="text-sm sm:text-base font-black text-slate-950 truncate max-w-full">
-                              {leaderboard[0].name}
-                            </span>
-                            <span className="mt-1 px-3 py-0.5 rounded-full bg-amber-400 text-amber-950 text-xs sm:text-sm font-black shadow-xs">
-                              {leaderboard[0].score} {leaderboard[0].score === 1 ? 'pt' : 'pts'}
-                            </span>
-                          </div>
-                        ) : null}
-
-                        {/* 3rd Place */}
-                        {leaderboard[2] ? (
-                          <div className="bg-orange-50/60 border-2 border-orange-300 rounded-2xl p-4 sm:p-5 text-center flex flex-col items-center shadow-xs">
-                            <span className="text-2xl sm:text-3xl mb-1">🥉</span>
-                            <span className="text-3xl sm:text-4xl mb-2">{leaderboard[2].avatar || '🚀'}</span>
-                            <span className="text-xs sm:text-sm font-bold text-slate-900 truncate max-w-full">
-                              {leaderboard[2].name}
-                            </span>
-                            <span className="mt-1 px-2.5 py-0.5 rounded-full bg-orange-200 text-orange-900 text-xs font-extrabold">
-                              {leaderboard[2].score} {leaderboard[2].score === 1 ? 'pt' : 'pts'}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="opacity-0" />
-                        )}
-                      </div>
-
-                      {/* 4th-10th List */}
-                      {leaderboard.length > 3 && (
-                        <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80 max-h-48 overflow-y-auto divide-y divide-slate-100">
-                          {leaderboard.slice(3, 10).map((player, idx) => (
-                            <div key={player.participant_id || idx} className="py-2 px-3 flex items-center justify-between text-xs">
-                              <div className="flex items-center space-x-2.5">
-                                <span className="w-5 text-center font-bold text-slate-400">#{idx + 4}</span>
-                                <span className="text-lg">{player.avatar || '🚀'}</span>
-                                <span className="font-semibold text-slate-800">{player.name}</span>
-                              </div>
-                              <span className="font-bold text-amber-700">
-                                {player.score} {player.score === 1 ? 'pt' : 'pts'}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer */}
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                  <div className="flex items-center space-x-1.5 font-medium">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Live quiz rankings</span>
-                  </div>
-                  <div className="font-semibold text-slate-800">
-                    <span className="text-base font-extrabold text-slate-900 mr-1">{leaderboard.length}</span>
-                    <span>total players</span>
-                  </div>
-                </div>
-              </div>
-            ) : currentQuestion ? (
-              <div className="bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-8 shadow-sm flex flex-col justify-between h-full space-y-6">
-                <div>
-                  {/* Question Header & Badges */}
-                  <div className="flex items-center space-x-2 mb-3">
-                    <span className="px-2.5 py-0.5 rounded-lg bg-slate-900 text-white text-xs font-bold">
-                      Question {currentQuestion.order_num}
-                    </span>
-                    {!votingOpen && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-xs font-semibold flex items-center space-x-1">
-                        <Lock className="w-3 h-3" />
-                        <span>Voting Closed</span>
-                      </span>
-                    )}
-                    {!showResults && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold flex items-center space-x-1">
-                        <EyeOff className="w-3 h-3" />
-                        <span>Results Hidden</span>
-                      </span>
-                    )}
-                  </div>
-
-                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
-                    {currentQuestion.question_text}
-                  </h2>
-                </div>
-
-                {/* Stage Graphic */}
-                <div className="flex-1 flex flex-col justify-center py-2">
-                  {showResults ? (
-                    <div>
-                      {/* Multiple Choice Chart */}
-                      {currentQuestion.question_type === 'multiple_choice' && (
-                        <div>
-                          <LiveBarChart
-                            results={liveResults?.results || []}
-                            totalVotes={liveResults?.totalVotes || 0}
-                            isPresenter={true}
-                            correctAnswer={correctAnswer}
-                            showCorrectAnswer={showCorrectAnswer}
-                          />
-                          {showCorrectAnswer && correctAnswer && (
-                            <div className="mt-5 p-3.5 sm:p-4 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center justify-center space-x-2.5 text-emerald-900 text-base sm:text-lg font-bold shadow-xs animate-fadeIn">
-                              <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600 shrink-0" />
-                              <span>Correct Answer: <span className="underline decoration-emerald-500 decoration-2 font-black">{correctAnswer}</span></span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Word Cloud */}
-                      {currentQuestion.question_type === 'word_cloud' && (
-                        <div className="py-2">
-                          <WordCloud words={liveResults?.words || []} />
-                        </div>
-                      )}
-
-                      {/* Rating Chart */}
-                      {currentQuestion.question_type === 'rating' && (
-                        <LiveRatingChart
-                          ratingData={liveResults}
-                          average={liveResults?.average || 0}
-                          maxRating={liveResults?.maxRating || 5}
-                          totalVotes={liveResults?.totalVotes || 0}
-                          counts={liveResults?.counts || {}}
-                          isPresenter={true}
-                        />
-                      )}
-
-                      {/* Ranking Chart */}
-                      {currentQuestion.question_type === 'ranking' && (
-                        <LiveRankingChart
-                          rankingData={liveResults}
-                          totalVotes={liveResults?.totalVotes || 0}
-                          isPresenter={true}
-                        />
-                      )}
-                    </div>
-                  ) : (
-                    <div className="py-12 text-center bg-slate-50 rounded-xl border border-slate-100">
-                      <EyeOff className="w-10 h-10 text-slate-400 mx-auto mb-2" />
-                      <h3 className="text-lg font-bold text-slate-800">Results Hidden</h3>
-                      <p className="text-xs text-slate-500">Votes are being recorded. Results will appear shortly.</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer Count */}
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                  <div className="flex items-center space-x-1.5 font-medium">
-                    <Sparkles className="w-3.5 h-3.5 text-brand-600" />
-                    <span>Live response updates</span>
-                  </div>
-                  <div className="font-semibold text-slate-800">
-                    <span className="text-base font-extrabold text-slate-900 mr-1">{liveResults?.totalVotes || 0}</span>
-                    <span>votes cast</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-white rounded-2xl border border-slate-200/90 p-12 text-center flex flex-col items-center justify-center h-full">
-                <HelpCircle className="w-12 h-12 text-slate-400 mb-3" />
-                <h3 className="text-xl font-bold text-slate-900 mb-1">Session In Progress</h3>
-                <p className="text-xs text-slate-500">The presenter will activate the next question shortly.</p>
-              </div>
-            )}
-          </div>
-
-          {/* 3. Audience Q&A Sidebar (Toggled On) */}
-          {showQaSidebar && (
-            <div className="lg:col-span-3 flex flex-col">
-              <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm flex flex-col h-full space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="flex items-center space-x-2">
-                    <MessageSquare className="w-4 h-4 text-brand-600" />
-                    <span className="text-sm font-bold text-slate-900">Audience Q&A</span>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">
-                    {liveQaList.length}
+            {/* Quiz Mode Joined Participants Roster */}
+            {isQuizMode && (
+              <div className="pt-6 border-t border-slate-100 space-y-3">
+                <div className="flex items-center justify-center space-x-2">
+                  <Trophy className="w-4 h-4 text-amber-500" />
+                  <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    Participants Joined ({leaderboard.length})
                   </span>
                 </div>
 
-                {/* Questions List */}
-                <div className="flex-1 overflow-y-auto space-y-3 max-h-[520px] pr-1">
-                  {liveQaList.length === 0 ? (
-                    <div className="text-center py-12 text-xs text-slate-400">
-                      No audience questions submitted yet.
+                {leaderboard.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">
+                    Waiting for participants to choose their nickname and avatar to join...
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap items-center justify-center gap-2 max-h-56 overflow-y-auto p-1">
+                    {leaderboard.map((player, idx) => (
+                      <span
+                        key={player.participantId || player.participant_id || idx}
+                        className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-900 text-xs font-bold shadow-2xs animate-in zoom-in-95"
+                      >
+                        <span className="text-base">{player.avatar || '🚀'}</span>
+                        <span>{player.name}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </main>
+      ) : (
+        /* Live Poll Presentation View */
+        <main className="flex-1 px-4 sm:px-8 py-6 max-w-7xl mx-auto w-full flex flex-col justify-center">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+            
+            {/* 1. Large High-Visibility QR Code & Join Card */}
+            <div className={`${showSideColumn ? 'lg:col-span-3' : 'lg:col-span-4'} flex flex-col`}>
+              <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 shadow-sm text-center flex flex-col justify-between h-full">
+                <div>
+                  <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200 text-xs font-bold uppercase tracking-wider mb-3">
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>Join on Your Phone</span>
+                  </div>
+
+                  {/* Prominent High-Contrast QR Code */}
+                  {qrDataUrl ? (
+                    <div className="p-3 bg-white rounded-2xl border border-slate-200 inline-block mb-3 shadow-xs">
+                      <img
+                        src={qrDataUrl}
+                        alt="Scan to join poll"
+                        className="w-48 h-48 sm:w-56 sm:h-56 object-contain mx-auto"
+                      />
                     </div>
                   ) : (
-                    liveQaList.map((item) => (
-                      <div
-                        key={item.id}
-                        className={`p-3.5 rounded-xl border text-xs space-y-2 transition ${
-                          item.is_highlighted
-                            ? 'bg-amber-50/70 border-amber-300 ring-1 ring-amber-400/40'
-                            : 'bg-slate-50 border-slate-200/80 hover:bg-slate-100/70'
-                        }`}
-                      >
-                        {item.is_highlighted === 1 && (
-                          <div className="flex items-center space-x-1 text-[10px] font-bold uppercase tracking-wider text-amber-800">
-                            <Pin className="w-3 h-3 text-amber-600 fill-amber-500" />
-                            <span>Pinned on Stage</span>
-                          </div>
-                        )}
-                        <p className="text-slate-900 font-semibold leading-relaxed">
-                          "{item.question_text}"
-                        </p>
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
-                          <span className="truncate">{item.author_name || 'Anonymous'}</span>
-                          <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 font-bold shrink-0">
-                            <ThumbsUp className="w-3 h-3" />
-                            <span>{item.upvotes}</span>
-                          </span>
-                        </div>
-                      </div>
-                    ))
+                    <div className="w-48 h-48 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3 animate-pulse">
+                      <QrCode className="w-12 h-12 text-slate-400" />
+                    </div>
                   )}
+
+                  <div className="text-xs font-medium text-slate-500 mb-1">
+                    1. Scan with phone camera, or visit:
+                  </div>
+                  <div className="text-sm font-bold text-slate-900 font-mono mb-2">
+                    ask.urspace.com/p
+                  </div>
+                </div>
+
+                {/* Event PIN Box */}
+                <div className="bg-slate-900 text-white rounded-xl p-3 shadow-inner">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
+                    Event PIN
+                  </div>
+                  <div className="text-2xl sm:text-3xl font-black font-mono tracking-widest text-white">
+                    {poll.code}
+                  </div>
                 </div>
               </div>
             </div>
-          )}
 
-        </div>
-      </main>
+            {/* 2. Main Question & Live Results Stage */}
+            <div className={`${showSideColumn ? 'lg:col-span-6' : 'lg:col-span-8'} flex flex-col`}>
+              {currentQuestion ? (
+                <div className="bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-8 shadow-sm flex flex-col justify-between h-full space-y-6">
+                  <div>
+                    {/* Question Header & Badges */}
+                    <div className="flex items-center space-x-2 mb-3">
+                      <span className="px-2.5 py-0.5 rounded-lg bg-slate-900 text-white text-xs font-bold">
+                        Question {currentQuestion.order_num}
+                      </span>
+                      {!votingOpen && (
+                        <span className="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-xs font-semibold flex items-center space-x-1">
+                          <Lock className="w-3 h-3" />
+                          <span>Voting Closed</span>
+                        </span>
+                      )}
+                      {!showResults && (
+                        <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold flex items-center space-x-1">
+                          <EyeOff className="w-3 h-3" />
+                          <span>Results Hidden</span>
+                        </span>
+                      )}
+                    </div>
+
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                      {currentQuestion.question_text}
+                    </h2>
+                  </div>
+
+                  {/* Stage Graphic */}
+                  <div className="flex-1 flex flex-col justify-center py-2">
+                    {showResults ? (
+                      <div>
+                        {/* Multiple Choice Chart */}
+                        {currentQuestion.question_type === 'multiple_choice' && (
+                          <div>
+                            <LiveBarChart
+                              results={liveResults?.results || []}
+                              totalVotes={liveResults?.totalVotes || 0}
+                              isPresenter={true}
+                              correctAnswer={correctAnswer}
+                              showCorrectAnswer={showCorrectAnswer}
+                            />
+                            {showCorrectAnswer && correctAnswer && (
+                              <div className="mt-5 p-3.5 sm:p-4 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center justify-center space-x-2.5 text-emerald-900 text-base sm:text-lg font-bold shadow-xs animate-fadeIn">
+                                <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600 shrink-0" />
+                                <span>Correct Answer: <span className="underline decoration-emerald-500 decoration-2 font-black">{correctAnswer}</span></span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Word Cloud */}
+                        {currentQuestion.question_type === 'word_cloud' && (
+                          <div className="py-2">
+                            <WordCloud words={liveResults?.words || []} />
+                          </div>
+                        )}
+
+                        {/* Rating Chart */}
+                        {currentQuestion.question_type === 'rating' && (
+                          <LiveRatingChart
+                            ratingData={liveResults}
+                            average={liveResults?.average || 0}
+                            maxRating={liveResults?.maxRating || 5}
+                            totalVotes={liveResults?.totalVotes || 0}
+                            counts={liveResults?.counts || {}}
+                            isPresenter={true}
+                          />
+                        )}
+
+                        {/* Ranking Chart */}
+                        {currentQuestion.question_type === 'ranking' && (
+                          <LiveRankingChart
+                            rankingData={liveResults}
+                            totalVotes={liveResults?.totalVotes || 0}
+                            isPresenter={true}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <div className="py-12 text-center bg-slate-50 rounded-xl border border-slate-100">
+                        <EyeOff className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+                        <h3 className="text-lg font-bold text-slate-800">Results Hidden</h3>
+                        <p className="text-xs text-slate-500">Votes are being recorded. Results will appear shortly.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer Count */}
+                  <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                    <div className="flex items-center space-x-1.5 font-medium">
+                      <Sparkles className="w-3.5 h-3.5 text-brand-600" />
+                      <span>Live response updates</span>
+                    </div>
+                    <div className="font-semibold text-slate-800">
+                      <span className="text-base font-extrabold text-slate-900 mr-1">{liveResults?.totalVotes || 0}</span>
+                      <span>votes cast</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-slate-200/90 p-12 text-center flex flex-col items-center justify-center h-full">
+                  <HelpCircle className="w-12 h-12 text-slate-400 mb-3" />
+                  <h3 className="text-xl font-bold text-slate-900 mb-1">Session In Progress</h3>
+                  <p className="text-xs text-slate-500">The presenter will activate the next question shortly.</p>
+                </div>
+              )}
+            </div>
+
+            {/* 3. Right Column: Top 5 Live Leaderboard & Audience Q&A (Stacked) */}
+            {showSideColumn && (
+              <div className="lg:col-span-3 flex flex-col gap-4">
+                {/* Top 5 Leaderboard (if Quiz Mode & enabled) */}
+                {isQuizMode && showLeaderboard && (
+                  <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-sm flex flex-col">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                      <div className="flex items-center space-x-2">
+                        <Trophy className="w-4 h-4 text-amber-500" />
+                        <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">Top 5 Leaderboard</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+                        {leaderboard.length} Players
+                      </span>
+                    </div>
+
+                    <div className="divide-y divide-slate-100 pt-1">
+                      {leaderboard.length === 0 ? (
+                        <div className="py-6 text-center text-xs text-slate-400 italic">
+                          No quiz scores recorded yet.
+                        </div>
+                      ) : (
+                        leaderboard.slice(0, 5).map((player, idx) => (
+                          <div
+                            key={player.participantId || player.participant_id || idx}
+                            className="py-2.5 flex items-center justify-between text-xs"
+                          >
+                            <div className="flex items-center space-x-2.5 min-w-0">
+                              <span className={`w-5 text-center font-black ${
+                                idx === 0 ? 'text-amber-500' : idx === 1 ? 'text-slate-400' : idx === 2 ? 'text-orange-400' : 'text-slate-400'
+                              }`}>
+                                #{idx + 1}
+                              </span>
+                              <span className="text-base shrink-0">{player.avatar || '🚀'}</span>
+                              <span className="font-bold text-slate-800 truncate">{player.name}</span>
+                            </div>
+                            <span className="font-black text-amber-800 px-2 py-0.5 rounded-md bg-amber-50 shrink-0">
+                              {player.score} {player.score === 1 ? 'pt' : 'pts'}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Audience Q&A (stacked below Top 5 Leaderboard if both are displayed) */}
+                {poll.qa_enabled && showQaSidebar && (
+                  <div className={`bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-sm flex flex-col ${
+                    isQuizMode && showLeaderboard ? 'flex-1 min-h-[280px]' : 'h-full'
+                  } space-y-3`}>
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                      <div className="flex items-center space-x-2">
+                        <MessageSquare className="w-4 h-4 text-brand-600" />
+                        <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">Audience Q&A</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">
+                        {liveQaList.length}
+                      </span>
+                    </div>
+
+                    {/* Questions List */}
+                    <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[460px] pr-1">
+                      {liveQaList.length === 0 ? (
+                        <div className="text-center py-10 text-xs text-slate-400">
+                          No audience questions submitted yet.
+                        </div>
+                      ) : (
+                        liveQaList.map((item) => (
+                          <div
+                            key={item.id}
+                            className={`p-3 rounded-xl border text-xs space-y-1.5 transition ${
+                              item.is_highlighted
+                                ? 'bg-amber-50/70 border-amber-300 ring-1 ring-amber-400/40'
+                                : 'bg-slate-50 border-slate-200/80 hover:bg-slate-100/70'
+                            }`}
+                          >
+                            {item.is_highlighted === 1 && (
+                              <div className="flex items-center space-x-1 text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                                <Pin className="w-3 h-3 text-amber-600 fill-amber-500" />
+                                <span>Pinned on Stage</span>
+                              </div>
+                            )}
+                            <p className="text-slate-900 font-semibold leading-relaxed">
+                              "{item.question_text}"
+                            </p>
+                            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
+                              <span className="truncate">{item.author_name || 'Anonymous'}</span>
+                              <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 font-bold shrink-0">
+                                <ThumbsUp className="w-3 h-3" />
+                                <span>{item.upvotes}</span>
+                              </span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            )}
+
+          </div>
+        </main>
+      )}
 
       {/* Spotlight Bar if Question is Pinned & Sidebar is not showing */}
-      {highlightedQa && !showQaSidebar && (
+      {isLive && highlightedQa && !showQaSidebar && (
         <div className="px-4 sm:px-8 pb-4">
           <div className="max-w-4xl mx-auto bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 shadow-sm flex items-start space-x-3">
             <div className="w-8 h-8 rounded-xl bg-amber-400 text-slate-950 font-bold flex items-center justify-center shrink-0">
