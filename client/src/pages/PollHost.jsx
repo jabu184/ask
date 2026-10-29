@@ -322,13 +322,47 @@ export default function PollHost() {
   };
 
   const handleToggleCorrectAnswer = () => {
-    if (!poll || !socketRef.current) return;
+    if (!poll || !socketRef.current || !currentQuestion) return;
     const nextVal = !showCorrectAnswer;
     setShowCorrectAnswer(nextVal);
+    if (nextVal) {
+      setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: 1 } : prev));
+      setQuestions((prev) =>
+        prev.map((q) => (q.id === currentQuestion.id ? { ...q, answer_revealed: 1 } : q))
+      );
+      if (!poll.show_results) {
+        socketRef.current.emit('poll:host_toggle_results', {
+          pollId: id,
+          show_results: true
+        });
+        setPoll((prev) => (prev ? { ...prev, show_results: true } : prev));
+      }
+    }
     socketRef.current.emit('poll:host_toggle_correct_answer', {
       pollId: id,
       show_correct: nextVal
     });
+  };
+
+  const handleRevealAndMarkCurrent = () => {
+    if (!poll || !socketRef.current || !currentQuestion) return;
+    setShowCorrectAnswer(true);
+    setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: 1 } : prev));
+    setQuestions((prev) =>
+      prev.map((q) => (q.id === currentQuestion.id ? { ...q, answer_revealed: 1 } : q))
+    );
+    if (!poll.show_results) {
+      socketRef.current.emit('poll:host_toggle_results', {
+        pollId: id,
+        show_results: true
+      });
+      setPoll((prev) => (prev ? { ...prev, show_results: true } : prev));
+    }
+    socketRef.current.emit('poll:host_toggle_correct_answer', {
+      pollId: id,
+      show_correct: true
+    });
+    setMarkPromptTargetQId(null);
   };
 
   const handlePurgeData = async () => {
@@ -1342,7 +1376,7 @@ export default function PollHost() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
               <button
                 type="button"
-                onClick={() => executeQuestionChange(markPromptTargetQId, 'reveal_and_mark')}
+                onClick={handleRevealAndMarkCurrent}
                 className="w-full px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center space-x-2 cursor-pointer"
               >
                 <Eye className="w-4 h-4" />

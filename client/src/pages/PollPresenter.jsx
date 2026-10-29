@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import QRCode from 'qrcode';
@@ -323,6 +323,25 @@ export default function PollPresenter() {
     const pid = p.participantId || p.participant_id;
     return activeParticipantIds.includes(pid);
   });
+
+  const multipleChoiceResults = useMemo(() => {
+    const opts = getQuestionOptions(currentQuestion);
+    if (!opts || opts.length === 0) {
+      return liveResults?.results || [];
+    }
+    const resultsMap = new Map();
+    if (liveResults?.results && Array.isArray(liveResults.results)) {
+      liveResults.results.forEach((r) => resultsMap.set(r.option, r));
+    }
+    return opts.map((opt) => {
+      const match = resultsMap.get(opt);
+      return {
+        option: opt,
+        count: match?.count || 0,
+        percentage: match?.percentage || 0
+      };
+    });
+  }, [liveResults, currentQuestion]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col justify-between font-sans selection:bg-brand-500 selection:text-white">
@@ -668,152 +687,114 @@ export default function PollPresenter() {
 
                   {/* Stage Graphic */}
                   <div className="flex-1 flex flex-col justify-center py-2">
-                    {showResults ? (
+                    {/* Multiple Choice Chart: format identical before & after results display, listed one above another */}
+                    {currentQuestion.question_type === 'multiple_choice' && (
                       <div>
-                        {/* Multiple Choice Chart */}
-                        {currentQuestion.question_type === 'multiple_choice' && (
-                          <div>
-                            <LiveBarChart
-                              results={liveResults?.results || []}
-                              totalVotes={liveResults?.totalVotes || 0}
-                              isPresenter={true}
-                              correctAnswer={correctAnswer}
-                              showCorrectAnswer={showCorrectAnswer}
-                            />
-                            {showCorrectAnswer && correctAnswer && (
-                              <div className="mt-5 p-3.5 sm:p-4 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center justify-center space-x-2.5 text-emerald-900 text-base sm:text-lg font-bold shadow-xs animate-fadeIn">
-                                <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600 shrink-0" />
-                                <span>Correct Answer: <span className="underline decoration-emerald-500 decoration-2 font-black">{correctAnswer}</span></span>
-                              </div>
-                            )}
+                        <LiveBarChart
+                          results={multipleChoiceResults}
+                          totalVotes={liveResults?.totalVotes || 0}
+                          isPresenter={true}
+                          correctAnswer={correctAnswer}
+                          showCorrectAnswer={showCorrectAnswer}
+                          showResults={showResults}
+                        />
+                        {showCorrectAnswer && correctAnswer && showResults && (
+                          <div className="mt-5 p-3.5 sm:p-4 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center justify-center space-x-2.5 text-emerald-900 text-base sm:text-lg font-bold shadow-xs animate-fadeIn">
+                            <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600 shrink-0" />
+                            <span>Correct Answer: <span className="underline decoration-emerald-500 decoration-2 font-black">{correctAnswer}</span></span>
                           </div>
-                        )}
-
-                        {/* Word Cloud */}
-                        {currentQuestion.question_type === 'word_cloud' && (
-                          <div className="py-2">
-                            <WordCloud words={liveResults?.words || []} />
-                          </div>
-                        )}
-
-                        {/* Rating Chart */}
-                        {currentQuestion.question_type === 'rating' && (
-                          <LiveRatingChart
-                            ratingData={liveResults}
-                            average={liveResults?.average || 0}
-                            maxRating={liveResults?.maxRating || 5}
-                            totalVotes={liveResults?.totalVotes || 0}
-                            counts={liveResults?.counts || {}}
-                            isPresenter={true}
-                          />
-                        )}
-
-                        {/* Ranking Chart */}
-                        {currentQuestion.question_type === 'ranking' && (
-                          <LiveRankingChart
-                            rankingData={liveResults}
-                            totalVotes={liveResults?.totalVotes || 0}
-                            isPresenter={true}
-                          />
                         )}
                       </div>
-                    ) : (
-                      /* When results are hidden, still show the possible responses without revealing counts/percentages */
-                      <div className="py-2 space-y-4">
-                        {currentQuestion.question_type === 'multiple_choice' && (
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                Possible Options
-                              </span>
-                              <span className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-full">
-                                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                                <span>Responses in progress...</span>
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                              {getQuestionOptions(currentQuestion).map((opt, i) => (
-                                <div
-                                  key={i}
-                                  className="p-4 rounded-2xl border-2 border-slate-200 bg-slate-50/70 flex items-center justify-between shadow-xs transition"
-                                >
-                                  <div className="flex items-center space-x-3 min-w-0">
-                                    <span className="w-8 h-8 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-sm flex items-center justify-center shrink-0 shadow-xs">
-                                      {String.fromCharCode(65 + i)}
-                                    </span>
-                                    <span className="font-semibold text-slate-800 text-sm truncate">{opt}</span>
-                                  </div>
-                                  <span className="text-[11px] font-medium text-slate-400 italic shrink-0">
-                                    Collecting...
+                    )}
+
+                    {/* Word Cloud */}
+                    {currentQuestion.question_type === 'word_cloud' && (
+                      showResults ? (
+                        <div className="py-2">
+                          <WordCloud words={liveResults?.words || []} />
+                        </div>
+                      ) : (
+                        <div className="py-12 text-center bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
+                          <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full">
+                            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                            <span>Responses in progress...</span>
+                          </div>
+                          <p className="text-sm font-semibold text-slate-700">
+                            Collecting words from audience...
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            Word cloud visualization will generate on this screen when results are revealed.
+                          </p>
+                        </div>
+                      )
+                    )}
+
+                    {/* Rating Chart */}
+                    {currentQuestion.question_type === 'rating' && (
+                      showResults ? (
+                        <LiveRatingChart
+                          ratingData={liveResults}
+                          average={liveResults?.average || 0}
+                          maxRating={liveResults?.maxRating || 5}
+                          totalVotes={liveResults?.totalVotes || 0}
+                          counts={liveResults?.counts || {}}
+                          isPresenter={true}
+                        />
+                      ) : (
+                        <div className="py-8 text-center bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-4">
+                          <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full">
+                            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                            <span>Responses in progress...</span>
+                          </div>
+                          <div className="flex items-center justify-center space-x-3 text-slate-300">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star key={star} className="w-10 h-10 fill-slate-200 text-slate-300" />
+                            ))}
+                          </div>
+                          <p className="text-xs text-slate-500">
+                            Audience ratings are currently being submitted. Results will appear once revealed by host.
+                          </p>
+                        </div>
+                      )
+                    )}
+
+                    {/* Ranking Chart */}
+                    {currentQuestion.question_type === 'ranking' && (
+                      showResults ? (
+                        <LiveRankingChart
+                          rankingData={liveResults}
+                          totalVotes={liveResults?.totalVotes || 0}
+                          isPresenter={true}
+                        />
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Items to Rank
+                            </span>
+                            <span className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-full">
+                              <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                              <span>Responses in progress...</span>
+                            </span>
+                          </div>
+                          <div className="space-y-2">
+                            {getQuestionOptions(currentQuestion).map((opt, i) => (
+                              <div
+                                key={i}
+                                className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex items-center justify-between shadow-xs"
+                              >
+                                <div className="flex items-center space-x-3 min-w-0">
+                                  <span className="w-6 h-6 rounded-lg bg-white border border-slate-200 text-slate-500 font-bold text-xs flex items-center justify-center shrink-0">
+                                    {i + 1}
                                   </span>
+                                  <span className="font-semibold text-slate-800 text-sm truncate">{opt}</span>
                                 </div>
-                              ))}
-                            </div>
+                                <span className="text-[11px] text-slate-400 italic shrink-0">Ranking in progress...</span>
+                              </div>
+                            ))}
                           </div>
-                        )}
-
-                        {currentQuestion.question_type === 'ranking' && (
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                Items to Rank
-                              </span>
-                              <span className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-full">
-                                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                                <span>Responses in progress...</span>
-                              </span>
-                            </div>
-                            <div className="space-y-2">
-                              {getQuestionOptions(currentQuestion).map((opt, i) => (
-                                <div
-                                  key={i}
-                                  className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex items-center justify-between shadow-xs"
-                                >
-                                  <div className="flex items-center space-x-3 min-w-0">
-                                    <span className="w-6 h-6 rounded-lg bg-white border border-slate-200 text-slate-500 font-bold text-xs flex items-center justify-center shrink-0">
-                                      {i + 1}
-                                    </span>
-                                    <span className="font-semibold text-slate-800 text-sm truncate">{opt}</span>
-                                  </div>
-                                  <span className="text-[11px] text-slate-400 italic shrink-0">Ranking in progress...</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {currentQuestion.question_type === 'rating' && (
-                          <div className="py-8 text-center bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-4">
-                            <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full">
-                              <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                              <span>Responses in progress...</span>
-                            </div>
-                            <div className="flex items-center justify-center space-x-3 text-slate-300">
-                              {[1, 2, 3, 4, 5].map((star) => (
-                                <Star key={star} className="w-10 h-10 fill-slate-200 text-slate-300" />
-                              ))}
-                            </div>
-                            <p className="text-xs text-slate-500">
-                              Audience ratings are currently being submitted. Results will appear once revealed by host.
-                            </p>
-                          </div>
-                        )}
-
-                        {currentQuestion.question_type === 'word_cloud' && (
-                          <div className="py-12 text-center bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
-                            <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full">
-                              <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                              <span>Responses in progress...</span>
-                            </div>
-                            <p className="text-sm font-semibold text-slate-700">
-                              Collecting words from audience...
-                            </p>
-                            <p className="text-xs text-slate-400">
-                              Word cloud visualization will generate on this screen when results are revealed.
-                            </p>
-                          </div>
-                        )}
-                      </div>
+                        </div>
+                      )
                     )}
                   </div>
 
