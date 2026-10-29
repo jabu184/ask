@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import QRCode from 'qrcode';
@@ -324,16 +324,16 @@ export default function PollPresenter() {
     return activeParticipantIds.includes(pid);
   });
 
-  const multipleChoiceResults = useMemo(() => {
-    const opts = getQuestionOptions(currentQuestion);
-    if (!opts || opts.length === 0) {
+  const questionOptions = getQuestionOptions(currentQuestion);
+  const multipleChoiceResults = (() => {
+    if (!questionOptions || questionOptions.length === 0) {
       return liveResults?.results || [];
     }
     const resultsMap = new Map();
     if (liveResults?.results && Array.isArray(liveResults.results)) {
       liveResults.results.forEach((r) => resultsMap.set(r.option, r));
     }
-    return opts.map((opt) => {
+    return questionOptions.map((opt) => {
       const match = resultsMap.get(opt);
       return {
         option: opt,
@@ -341,7 +341,7 @@ export default function PollPresenter() {
         percentage: match?.percentage || 0
       };
     });
-  }, [liveResults, currentQuestion]);
+  })();
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col justify-between font-sans selection:bg-brand-500 selection:text-white">
