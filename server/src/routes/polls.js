@@ -134,8 +134,8 @@ router.post('/', (req, res) => {
       );
 
       const insertQ = db.prepare(`
-        INSERT INTO poll_questions (id, poll_id, order_num, question_text, question_type, options_json, correct_answer)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO poll_questions (id, poll_id, order_num, question_text, question_type, options_json, correct_answer, show_results)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       questions.forEach((q, idx) => {
@@ -151,6 +151,8 @@ router.post('/', (req, res) => {
           optionsJson = JSON.stringify({ allowMultiple: q.allowMultiple !== false });
         }
 
+        const showResultsVal = (q.show_results === false || q.show_results === 0) ? 0 : 1;
+
         insertQ.run(
           qId,
           pollId,
@@ -158,7 +160,8 @@ router.post('/', (req, res) => {
           q.question_text || `Question ${idx + 1}`,
           q.question_type || 'multiple_choice',
           optionsJson,
-          q.correctAnswer || q.correct_answer || null
+          q.correctAnswer || q.correct_answer || null,
+          showResultsVal
         );
       });
 
@@ -356,13 +359,14 @@ router.put('/:id', (req, res) => {
             question_text = ?,
             question_type = ?,
             options_json = ?,
-            correct_answer = ?
+            correct_answer = ?,
+            show_results = ?
           WHERE id = ?
         `);
 
         const insertQ = db.prepare(`
-          INSERT INTO poll_questions (id, poll_id, order_num, question_text, question_type, options_json, correct_answer)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO poll_questions (id, poll_id, order_num, question_text, question_type, options_json, correct_answer, show_results)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         questions.forEach((q, idx) => {
@@ -376,12 +380,13 @@ router.put('/:id', (req, res) => {
           }
 
           const correctAnswer = q.correctAnswer || q.correct_answer || null;
+          const showResultsVal = (q.show_results === false || q.show_results === 0) ? 0 : 1;
 
           if (q.id && existingQs.some(e => e.id === q.id)) {
-            updateQ.run(idx + 1, q.question_text, q.question_type, optionsJson, correctAnswer, q.id);
+            updateQ.run(idx + 1, q.question_text, q.question_type, optionsJson, correctAnswer, showResultsVal, q.id);
           } else {
             const newQId = generateId();
-            insertQ.run(newQId, poll.id, idx + 1, q.question_text, q.question_type, optionsJson, correctAnswer);
+            insertQ.run(newQId, poll.id, idx + 1, q.question_text, q.question_type, optionsJson, correctAnswer, showResultsVal);
           }
         });
 

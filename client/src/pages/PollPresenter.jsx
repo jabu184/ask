@@ -140,12 +140,16 @@ export default function PollPresenter() {
           setCurrentQuestion(payload.currentQuestion);
           setLiveResults(payload.liveResults);
           setVotingOpen(true);
-          setShowCorrectAnswer(false);
+          setShowResults(typeof payload.show_results !== 'undefined' ? Boolean(payload.show_results) : true);
+          setShowCorrectAnswer(Boolean(payload.show_correct_answer));
           setCorrectAnswer(payload.currentQuestion?.correct_answer || null);
         });
 
-        socket.on('poll:correct_answer_toggled', ({ show_correct_answer, correctAnswer }) => {
+        socket.on('poll:correct_answer_toggled', ({ questionId, show_correct_answer, correctAnswer }) => {
           setShowCorrectAnswer(Boolean(show_correct_answer));
+          if (show_correct_answer) {
+            setShowResults(true);
+          }
           if (correctAnswer !== undefined) {
             setCorrectAnswer(correctAnswer);
           }

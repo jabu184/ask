@@ -22,7 +22,9 @@ import {
   RefreshCw,
   Copy,
   Trophy,
-  ListOrdered
+  ListOrdered,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 const QUESTION_TYPES = [
@@ -81,7 +83,8 @@ export default function PollBuilder() {
       options: ['Option 1', 'Option 2'],
       maxRating: 5,
       allowMultiple: true,
-      correctAnswer: null
+      correctAnswer: null,
+      show_results: true
     }
   ]);
 
@@ -128,7 +131,8 @@ export default function PollBuilder() {
                   options: opts,
                   maxRating: maxR,
                   allowMultiple: allowMulti,
-                  correctAnswer: cAns
+                  correctAnswer: cAns,
+                  show_results: q.show_results !== false && q.show_results !== 0
                 };
               })
             );
@@ -155,7 +159,8 @@ export default function PollBuilder() {
         options: ['Option 1', 'Option 2'],
         maxRating: 5,
         allowMultiple: true,
-        correctAnswer: null
+        correctAnswer: null,
+        show_results: true
       }
     ]);
   };
@@ -277,7 +282,8 @@ export default function PollBuilder() {
         options: (q.question_type === 'multiple_choice' || q.question_type === 'ranking') ? q.options.map((o) => o.trim()).filter(Boolean) : null,
         correctAnswer: q.question_type === 'multiple_choice' ? q.correctAnswer || null : null,
         maxRating: q.question_type === 'rating' ? q.maxRating || 5 : null,
-        allowMultiple: q.question_type === 'word_cloud' ? (q.allowMultiple !== false) : true
+        allowMultiple: q.question_type === 'word_cloud' ? (q.allowMultiple !== false) : true,
+        show_results: q.show_results !== false
       }))
     };
 
@@ -816,6 +822,44 @@ export default function PollBuilder() {
                     </div>
                   </div>
                 )}
+
+                {/* Question-level Settings: Results Visibility */}
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    {q.show_results !== false ? (
+                      <Eye className="w-4 h-4 text-indigo-600 shrink-0" />
+                    ) : (
+                      <EyeOff className="w-4 h-4 text-slate-400 shrink-0" />
+                    )}
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 block">
+                        Live Results Display
+                      </span>
+                      <span className="text-[11px] text-slate-500">
+                        {q.show_results !== false
+                          ? 'Results visible to participants & presenter immediately as votes arrive (default)'
+                          : 'Results hidden initially — host can reveal results live on screen when ready'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => updateQuestion(qIdx, 'show_results', q.show_results === false ? true : false)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                      q.show_results !== false ? 'bg-indigo-600' : 'bg-slate-300'
+                    }`}
+                    role="switch"
+                    aria-checked={q.show_results !== false}
+                    title={q.show_results !== false ? 'Click to hide results initially' : 'Click to show results initially'}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                        q.show_results !== false ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
             );
           })}

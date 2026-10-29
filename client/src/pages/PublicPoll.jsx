@@ -208,7 +208,8 @@ export default function PublicPoll() {
           setHasVoted(false);
           setUserVote(null);
           setMyWords([]);
-          setShowCorrectAnswer(false);
+          setShowResults(typeof data.show_results !== 'undefined' ? Boolean(data.show_results) : true);
+          setShowCorrectAnswer(Boolean(data.show_correct_answer));
           setCorrectAnswer(data.currentQuestion?.correct_answer || null);
           setTextInput('');
         });
