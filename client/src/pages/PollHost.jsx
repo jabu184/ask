@@ -130,14 +130,21 @@ export default function PollHost() {
         });
 
         socket.on('poll:question_changed', (data) => {
-          setQuestions((prevQuestions) => {
-            const fullQ = prevQuestions.find((q) => q.id === data.currentQuestion.id);
-            const merged = fullQ
-              ? { ...fullQ, ...data.currentQuestion, correct_answer: fullQ.correct_answer || data.currentQuestion.correct_answer }
-              : data.currentQuestion;
-            setCurrentQuestion(merged);
-            return prevQuestions;
-          });
+          let mergedActive = data.currentQuestion;
+          setQuestions((prevQuestions) =>
+            prevQuestions.map((q) => {
+              if (q.id === data.currentQuestion.id) {
+                mergedActive = {
+                  ...q,
+                  ...data.currentQuestion,
+                  correct_answer: q.correct_answer || data.currentQuestion.correct_answer
+                };
+                return mergedActive;
+              }
+              return q;
+            })
+          );
+          setCurrentQuestion(mergedActive);
           setShowCorrectAnswer(Boolean(data.show_correct_answer));
           if (data.liveResults) setLiveResults(data.liveResults);
           setPoll((prev) => (prev ? { ...prev, current_question_id: data.currentQuestion.id, voting_open: true } : prev));

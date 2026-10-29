@@ -609,8 +609,18 @@ router.post('/:id/question', (req, res) => {
       return res.status(404).json({ error: 'Question not found in this poll' });
     }
 
+    let cAns = question.correct_answer || null;
+    if (!cAns && question.options_json) {
+      try {
+        const parsed = JSON.parse(question.options_json);
+        cAns = parsed.correctAnswer || null;
+      } catch (e) {}
+    }
+    if (cAns) cAns = String(cAns).trim();
+
+    const isMarked = question.answer_revealed === 1;
     const qShowResults = (question.show_results !== 0 && question.show_results !== null) ? 1 : 0;
-    const qShowCorrect = (question.show_correct_answer === 1 || question.answer_revealed === 1) ? 1 : 0;
+    const qShowCorrect = (question.show_correct_answer === 1 || isMarked) ? 1 : 0;
 
     db.prepare('UPDATE polls SET current_question_id = ?, voting_open = 1, show_results = ?, show_correct_answer = ? WHERE id = ?')
       .run(question_id, qShowResults, qShowCorrect, poll.id);
@@ -632,7 +642,7 @@ router.post('/:id/question', (req, res) => {
           order_num: question.order_num,
           question_text: question.question_text,
           question_type: question.question_type,
-          correct_answer: (qShowCorrect === 1) ? (question.correct_answer || null) : null,
+          correct_answer: (qShowCorrect === 1) ? (cAns || null) : null,
           answer_revealed: Boolean(question.answer_revealed),
           show_results: Boolean(qShowResults),
           show_correct_answer: Boolean(qShowCorrect),
@@ -641,6 +651,7 @@ router.post('/:id/question', (req, res) => {
         voting_open: true,
         show_results: Boolean(qShowResults),
         show_correct_answer: Boolean(qShowCorrect),
+        correctAnswer: (qShowCorrect === 1) ? (cAns || null) : null,
         liveResults: (qShowResults === 1) ? results : null
       });
     }
@@ -726,13 +737,28 @@ router.post('/:id/toggle-mark', (req, res) => {
     const q = db.prepare('SELECT * FROM poll_questions WHERE id = ? AND poll_id = ?').get(questionId, poll.id);
     if (!q) return res.status(404).json({ error: 'Question not found' });
 
+    let cAns = q.correct_answer || null;
+    if (!cAns && q.options_json) {
+      try {
+        const parsed = JSON.parse(q.options_json);
+        cAns = parsed.correctAnswer || null;
+      } catch (e) {}
+    }
+    if (cAns) cAns = String(cAns).trim();
+
     const currentVal = q.answer_revealed === 1 ? 1 : 0;
     const nextVal = typeof marked === 'boolean' ? (marked ? 1 : 0) : (currentVal === 1 ? 0 : 1);
 
     db.prepare('UPDATE poll_questions SET answer_revealed = ?, show_correct_answer = ? WHERE id = ?').run(nextVal, nextVal, questionId);
+    if (nextVal === 1) {
+      db.prepare('UPDATE poll_questions SET show_results = 1 WHERE id = ?').run(questionId);
+    }
 
-    if (poll.current_question_id === questionId) {
+    if (!poll.current_question_id || poll.current_question_id === questionId) {
       db.prepare('UPDATE polls SET show_correct_answer = ? WHERE id = ?').run(nextVal, poll.id);
+      if (nextVal === 1) {
+        db.prepare('UPDATE polls SET show_results = 1 WHERE id = ?').run(poll.id);
+      }
     }
 
     let leaderboard = [];
@@ -748,14 +774,14 @@ router.post('/:id/toggle-mark', (req, res) => {
       io.to(`poll:${poll.id}`).emit('poll:correct_answer_toggled', {
         questionId,
         show_correct_answer: nextVal === 1,
-        correctAnswer: nextVal === 1 ? q.correct_answer : null
+        correctAnswer: nextVal === 1 ? (cAns || null) : null
       });
       io.to(`poll:${poll.id}`).emit('poll:question_marked_toggled', {
         questionId,
         answer_revealed: Boolean(nextVal),
         is_marked: nextVal === 1,
         show_correct_answer: nextVal === 1,
-        correctAnswer: nextVal === 1 ? q.correct_answer : null,
+        correctAnswer: nextVal === 1 ? (cAns || null) : null,
         leaderboard
       });
     }

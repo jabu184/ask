@@ -22,7 +22,10 @@ export default function LiveBarChart({
   return (
     <div className="space-y-3.5 w-full">
       {results.map((item, idx) => {
-        const isCorrect = showCorrectAnswer && Boolean(correctAnswer) && item.option === correctAnswer;
+        const isCorrect = showCorrectAnswer && Boolean(correctAnswer) && (
+          item.option === correctAnswer ||
+          (typeof item.option === 'string' && typeof correctAnswer === 'string' && item.option.trim().toLowerCase() === correctAnswer.trim().toLowerCase())
+        );
         const isWinner = showResults && !showCorrectAnswer && totalVotes > 0 && item.percentage === maxPercentage && item.count > 0;
 
         return (

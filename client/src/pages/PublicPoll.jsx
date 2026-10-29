@@ -129,8 +129,11 @@ export default function PublicPoll() {
             myWords: initial.userVotes || []
           };
         }
-        setShowCorrectAnswer(Boolean(initial.poll?.show_correct_answer || initial.currentQuestion?.show_correct_answer));
-        setCorrectAnswer(initial.currentQuestion?.correct_answer || null);
+        const initQ = initial.currentQuestion;
+        const initShowCorrect = Boolean(initial.poll?.show_correct_answer || initQ?.show_correct_answer || initQ?.answer_revealed || initial.show_correct_answer);
+        const initCAns = initQ?.correct_answer || initial.correctAnswer || null;
+        setShowCorrectAnswer(initShowCorrect);
+        setCorrectAnswer(initCAns);
         setIsQuizMode(Boolean(initial.poll?.is_quiz_mode));
         setShowLeaderboard(Boolean(initial.poll?.show_leaderboard));
         setLeaderboard(initial.leaderboard || []);
@@ -190,17 +193,16 @@ export default function PublicPoll() {
               myWords: state.userVotes || []
             };
           }
-          if (state.poll && typeof state.poll.show_correct_answer !== 'undefined') {
-            setShowCorrectAnswer(Boolean(state.poll.show_correct_answer));
-          }
+          const stateQ = state.currentQuestion;
+          const stateShowCorrect = Boolean(state.poll?.show_correct_answer || stateQ?.show_correct_answer || stateQ?.answer_revealed || state.show_correct_answer);
+          const stateCAns = stateQ?.correct_answer || state.correctAnswer || null;
+          setShowCorrectAnswer(stateShowCorrect);
+          setCorrectAnswer(stateCAns);
           if (state.poll && typeof state.poll.is_quiz_mode !== 'undefined') {
             setIsQuizMode(Boolean(state.poll.is_quiz_mode));
           }
           if (state.poll && typeof state.poll.show_leaderboard !== 'undefined') {
             setShowLeaderboard(Boolean(state.poll.show_leaderboard));
-          }
-          if (state.currentQuestion) {
-            setCorrectAnswer(state.currentQuestion.correct_answer || null);
           }
           if (state.leaderboard) setLeaderboard(state.leaderboard);
           if (state.quizProfile) {
@@ -222,8 +224,11 @@ export default function PublicPoll() {
           setVotingOpen(data.voting_open);
           setLiveResults(data.liveResults);
           setShowResults(typeof data.show_results !== 'undefined' ? Boolean(data.show_results) : true);
-          setShowCorrectAnswer(Boolean(data.show_correct_answer));
-          setCorrectAnswer(data.currentQuestion?.correct_answer || null);
+          const q = data.currentQuestion;
+          const qShowCorrect = Boolean(data.show_correct_answer || q?.show_correct_answer || q?.answer_revealed);
+          const cAns = q?.correct_answer || data.correctAnswer || null;
+          setShowCorrectAnswer(qShowCorrect);
+          setCorrectAnswer(cAns);
           setTextInput('');
 
           // 1. Immediately check local saved response cache so there is no flicker

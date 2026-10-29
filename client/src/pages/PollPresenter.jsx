@@ -75,16 +75,19 @@ export default function PollPresenter() {
       try {
         setLoading(true);
         const data = await publicPollApi.lookupByCode(code, 'presenter');
+        const q = data.currentQuestion;
+        const qShowCorrect = Boolean(data.poll?.show_correct_answer || q?.show_correct_answer || q?.answer_revealed || data.show_correct_answer);
+        const cAns = q?.correct_answer || data.correctAnswer || null;
         setPoll(data.poll);
-        setCurrentQuestion(data.currentQuestion);
+        setCurrentQuestion(q);
         setLiveResults(data.liveResults);
-        setShowResults(Boolean(data.poll.show_results));
-        setVotingOpen(Boolean(data.poll.voting_open));
-        setShowQaSidebar(Boolean(data.poll.show_qa_on_screen));
-        setShowCorrectAnswer(Boolean(data.poll.show_correct_answer));
-        setCorrectAnswer(data.currentQuestion?.correct_answer || null);
-        setIsQuizMode(Boolean(data.poll.is_quiz_mode));
-        setShowLeaderboard(Boolean(data.poll.show_leaderboard));
+        setShowResults(Boolean(data.poll?.show_results));
+        setVotingOpen(Boolean(data.poll?.voting_open));
+        setShowQaSidebar(Boolean(data.poll?.show_qa_on_screen));
+        setShowCorrectAnswer(qShowCorrect);
+        setCorrectAnswer(cAns);
+        setIsQuizMode(Boolean(data.poll?.is_quiz_mode));
+        setShowLeaderboard(Boolean(data.poll?.show_leaderboard));
         setLeaderboard(data.leaderboard || []);
         setQaQuestions(data.qaQuestions || []);
 
@@ -105,6 +108,9 @@ export default function PollPresenter() {
         });
 
         socket.on('poll:state', (state) => {
+          const q = state.currentQuestion;
+          const qShowCorrect = Boolean(state.poll?.show_correct_answer || q?.show_correct_answer || q?.answer_revealed || state.show_correct_answer);
+          const cAns = q?.correct_answer || state.correctAnswer || null;
           if (state.poll) {
             setPoll(state.poll);
             setShowResults(Boolean(state.poll.show_results));
@@ -112,9 +118,7 @@ export default function PollPresenter() {
             if (typeof state.poll.show_qa_on_screen === 'boolean') {
               setShowQaSidebar(state.poll.show_qa_on_screen);
             }
-            if (typeof state.poll.show_correct_answer !== 'undefined') {
-              setShowCorrectAnswer(Boolean(state.poll.show_correct_answer));
-            }
+            setShowCorrectAnswer(qShowCorrect);
             if (typeof state.poll.is_quiz_mode !== 'undefined') {
               setIsQuizMode(Boolean(state.poll.is_quiz_mode));
             }
@@ -122,11 +126,9 @@ export default function PollPresenter() {
               setShowLeaderboard(Boolean(state.poll.show_leaderboard));
             }
           }
-          if (state.currentQuestion) {
-            setCurrentQuestion(state.currentQuestion);
-            if (state.currentQuestion.correct_answer !== undefined) {
-              setCorrectAnswer(state.currentQuestion.correct_answer || null);
-            }
+          if (q) {
+            setCurrentQuestion(q);
+            setCorrectAnswer(cAns);
           }
           if (state.liveResults) setLiveResults(state.liveResults);
           if (state.leaderboard) setLeaderboard(state.leaderboard);
@@ -137,12 +139,15 @@ export default function PollPresenter() {
         });
 
         socket.on('poll:question_changed', (payload) => {
-          setCurrentQuestion(payload.currentQuestion);
+          const q = payload.currentQuestion;
+          const qShowCorrect = Boolean(payload.show_correct_answer || q?.show_correct_answer || q?.answer_revealed);
+          const cAns = q?.correct_answer || payload.correctAnswer || null;
+          setCurrentQuestion(q);
           setLiveResults(payload.liveResults);
           setVotingOpen(true);
           setShowResults(typeof payload.show_results !== 'undefined' ? Boolean(payload.show_results) : true);
-          setShowCorrectAnswer(Boolean(payload.show_correct_answer));
-          setCorrectAnswer(payload.currentQuestion?.correct_answer || null);
+          setShowCorrectAnswer(qShowCorrect);
+          setCorrectAnswer(cAns);
         });
 
         socket.on('poll:correct_answer_toggled', ({ questionId, show_correct_answer, correctAnswer }) => {
@@ -200,22 +205,21 @@ export default function PollPresenter() {
         });
 
         socket.on('poll:question_marked_toggled', ({ questionId, answer_revealed, show_correct_answer, correctAnswer, leaderboard: lb }) => {
+          const isMarkedOrRevealed = Boolean(answer_revealed || show_correct_answer);
           setCurrentQuestion((prev) => {
             if (prev && prev.id === questionId) {
               return {
                 ...prev,
                 answer_revealed: Boolean(answer_revealed),
-                show_correct_answer: Boolean(show_correct_answer),
-                correct_answer: show_correct_answer ? (correctAnswer || prev.correct_answer) : null
+                show_correct_answer: isMarkedOrRevealed,
+                correct_answer: isMarkedOrRevealed ? (correctAnswer || prev.correct_answer) : null
               };
             }
             return prev;
           });
-          if (show_correct_answer !== undefined) {
-            setShowCorrectAnswer(Boolean(show_correct_answer));
-            if (show_correct_answer) setShowResults(true);
-            setCorrectAnswer(show_correct_answer ? (correctAnswer || null) : null);
-          }
+          setShowCorrectAnswer(isMarkedOrRevealed);
+          if (isMarkedOrRevealed) setShowResults(true);
+          setCorrectAnswer(isMarkedOrRevealed ? (correctAnswer || null) : null);
           if (lb) setLeaderboard(lb);
         });
 
@@ -372,6 +376,8 @@ export default function PollPresenter() {
   });
 
   const questionOptions = getQuestionOptions(currentQuestion);
+  const effectiveCorrectAnswer = correctAnswer || currentQuestion?.correct_answer || null;
+  const effectiveShowCorrect = Boolean((showCorrectAnswer || currentQuestion?.show_correct_answer || currentQuestion?.answer_revealed) && effectiveCorrectAnswer);
   const multipleChoiceResults = (() => {
     if (!questionOptions || questionOptions.length === 0) {
       return liveResults?.results || [];
@@ -741,14 +747,14 @@ export default function PollPresenter() {
                           results={multipleChoiceResults}
                           totalVotes={liveResults?.totalVotes || 0}
                           isPresenter={true}
-                          correctAnswer={correctAnswer}
-                          showCorrectAnswer={showCorrectAnswer}
+                          correctAnswer={effectiveCorrectAnswer}
+                          showCorrectAnswer={effectiveShowCorrect}
                           showResults={showResults}
                         />
-                        {showCorrectAnswer && correctAnswer && showResults && (
+                        {effectiveShowCorrect && effectiveCorrectAnswer && showResults && (
                           <div className="mt-5 p-3.5 sm:p-4 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center justify-center space-x-2.5 text-emerald-900 text-base sm:text-lg font-bold shadow-xs animate-fadeIn">
                             <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600 shrink-0" />
-                            <span>Correct Answer: <span className="underline decoration-emerald-500 decoration-2 font-black">{correctAnswer}</span></span>
+                            <span>Correct Answer: <span className="underline decoration-emerald-500 decoration-2 font-black">{effectiveCorrectAnswer}</span></span>
                           </div>
                         )}
                       </div>

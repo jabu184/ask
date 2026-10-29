@@ -249,6 +249,22 @@ function computePollLeaderboard(pollId) {
   }
 }
 
+function getQuestionCorrectAnswer(q) {
+  if (!q) return null;
+  if (q.correct_answer && String(q.correct_answer).trim() !== '') {
+    return String(q.correct_answer).trim();
+  }
+  if (q.options_json) {
+    try {
+      const parsed = typeof q.options_json === 'string' ? JSON.parse(q.options_json) : q.options_json;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.correctAnswer) {
+        return String(parsed.correctAnswer).trim();
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
 function getPollState(pollId, participantId = null, isHost = false) {
   const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
   if (!poll) return null;
@@ -258,6 +274,7 @@ function getPollState(pollId, participantId = null, isHost = false) {
 
   const isQuestionResultsVisible = currentQuestion ? (currentQuestion.show_results !== 0 && currentQuestion.show_results !== null) : Boolean(poll.show_results);
   const isQuestionAnswerShown = currentQuestion ? Boolean(currentQuestion.show_correct_answer === 1 || currentQuestion.answer_revealed === 1) : Boolean(poll.show_correct_answer);
+  const cAns = getQuestionCorrectAnswer(currentQuestion);
 
   let liveResults = null;
   if (currentQuestion && (isHost || isQuestionResultsVisible)) {
@@ -318,6 +335,7 @@ function getPollState(pollId, participantId = null, isHost = false) {
     },
     questions: isHost ? questions.map(q => ({
       ...q,
+      correct_answer: getQuestionCorrectAnswer(q),
       show_results: (q.show_results !== 0 && q.show_results !== null) ? 1 : 0,
       show_correct_answer: q.show_correct_answer === 1 ? 1 : 0,
       answer_revealed: Boolean(q.answer_revealed)
@@ -327,7 +345,7 @@ function getPollState(pollId, participantId = null, isHost = false) {
       order_num: currentQuestion.order_num,
       question_text: currentQuestion.question_text,
       question_type: currentQuestion.question_type,
-      correct_answer: (isHost || isQuestionAnswerShown) ? (currentQuestion.correct_answer || null) : null,
+      correct_answer: (isHost || isQuestionAnswerShown) ? (cAns || null) : null,
       answer_revealed: Boolean(currentQuestion.answer_revealed),
       show_results: isQuestionResultsVisible,
       show_correct_answer: isQuestionAnswerShown,
@@ -339,6 +357,8 @@ function getPollState(pollId, participantId = null, isHost = false) {
         }
       })()
     } : null,
+    show_correct_answer: isQuestionAnswerShown,
+    correctAnswer: isQuestionAnswerShown ? (cAns || null) : null,
     liveResults,
     userVote,
     userVotes,
@@ -550,7 +570,11 @@ function initPollSocket(httpServer) {
       try {
         const currentPoll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
         if (currentPoll && currentPoll.current_question_id && markPreviousAction) {
-          db.prepare('UPDATE poll_questions SET answer_revealed = 1 WHERE id = ?').run(currentPoll.current_question_id);
+          if (markPreviousAction === 'reveal_and_mark') {
+            db.prepare('UPDATE poll_questions SET answer_revealed = 1, show_correct_answer = 1, show_results = 1 WHERE id = ?').run(currentPoll.current_question_id);
+          } else {
+            db.prepare('UPDATE poll_questions SET answer_revealed = 1, show_correct_answer = 1 WHERE id = ?').run(currentPoll.current_question_id);
+          }
           if (currentPoll.is_quiz_mode === 1) {
             const leaderboard = computePollLeaderboard(pollId);
             io.to(`poll:${pollId}`).emit('poll:leaderboard_update', { leaderboard });
@@ -560,8 +584,10 @@ function initPollSocket(httpServer) {
         const question = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(questionId);
         if (!question) return;
 
+        const cAns = getQuestionCorrectAnswer(question);
+        const isMarked = question.answer_revealed === 1;
         const qShowResults = (question.show_results !== 0 && question.show_results !== null) ? 1 : 0;
-        const qShowCorrect = (question.show_correct_answer === 1 || question.answer_revealed === 1) ? 1 : 0;
+        const qShowCorrect = (question.show_correct_answer === 1 || isMarked) ? 1 : 0;
 
         db.prepare('UPDATE polls SET current_question_id = ?, voting_open = 1, show_results = ?, show_correct_answer = ? WHERE id = ?')
           .run(questionId, qShowResults, qShowCorrect, pollId);
@@ -581,7 +607,7 @@ function initPollSocket(httpServer) {
             order_num: question.order_num,
             question_text: question.question_text,
             question_type: question.question_type,
-            correct_answer: (qShowCorrect === 1) ? (question.correct_answer || null) : null,
+            correct_answer: (qShowCorrect === 1) ? (cAns || null) : null,
             answer_revealed: Boolean(question.answer_revealed),
             show_results: Boolean(qShowResults),
             show_correct_answer: Boolean(qShowCorrect),
@@ -590,6 +616,7 @@ function initPollSocket(httpServer) {
           voting_open: true,
           show_results: Boolean(qShowResults),
           show_correct_answer: Boolean(qShowCorrect),
+          correctAnswer: (qShowCorrect === 1) ? (cAns || null) : null,
           liveResults: (qShowResults === 1) ? results : null
         });
       } catch (err) {
@@ -696,13 +723,7 @@ function initPollSocket(httpServer) {
         if (targetQId) {
           const q = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(targetQId);
           if (q) {
-            correctAnswer = q.correct_answer || null;
-            if (!correctAnswer && q.options_json) {
-              try {
-                const parsed = JSON.parse(q.options_json);
-                correctAnswer = parsed.correctAnswer || null;
-              } catch (e) {}
-            }
+            correctAnswer = getQuestionCorrectAnswer(q);
             if (val === 1) {
               db.prepare('UPDATE poll_questions SET show_correct_answer = 1, answer_revealed = 1, show_results = 1 WHERE id = ?').run(targetQId);
             } else {
@@ -740,14 +761,21 @@ function initPollSocket(httpServer) {
         const q = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(questionId);
         if (!q) return;
 
+        const cAns = getQuestionCorrectAnswer(q);
         const currentVal = q.answer_revealed === 1 ? 1 : 0;
         const nextVal = typeof marked === 'boolean' ? (marked ? 1 : 0) : (currentVal === 1 ? 0 : 1);
 
         db.prepare('UPDATE poll_questions SET answer_revealed = ?, show_correct_answer = ? WHERE id = ?').run(nextVal, nextVal, questionId);
+        if (nextVal === 1) {
+          db.prepare('UPDATE poll_questions SET show_results = 1 WHERE id = ?').run(questionId);
+        }
 
         const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
-        if (poll && poll.current_question_id === questionId) {
+        if (poll && (!poll.current_question_id || poll.current_question_id === questionId)) {
           db.prepare('UPDATE polls SET show_correct_answer = ? WHERE id = ?').run(nextVal, pollId);
+          if (nextVal === 1) {
+            db.prepare('UPDATE polls SET show_results = 1 WHERE id = ?').run(pollId);
+          }
         }
 
         let leaderboard = [];
@@ -759,7 +787,7 @@ function initPollSocket(httpServer) {
         io.to(`poll:${pollId}`).emit('poll:correct_answer_toggled', {
           questionId,
           show_correct_answer: nextVal === 1,
-          correctAnswer: nextVal === 1 ? q.correct_answer : null
+          correctAnswer: nextVal === 1 ? cAns : null
         });
 
         io.to(`poll:${pollId}`).emit('poll:question_marked_toggled', {
@@ -767,7 +795,7 @@ function initPollSocket(httpServer) {
           answer_revealed: Boolean(nextVal),
           is_marked: nextVal === 1,
           show_correct_answer: nextVal === 1,
-          correctAnswer: nextVal === 1 ? q.correct_answer : null,
+          correctAnswer: nextVal === 1 ? cAns : null,
           leaderboard
         });
       } catch (err) {
