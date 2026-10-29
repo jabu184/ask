@@ -398,10 +398,10 @@ export default function PollPresenter() {
         /* Pre-Live Joining Lobby */
         <main className="flex-1 px-4 sm:px-8 py-8 max-w-6xl mx-auto w-full flex flex-col justify-center">
           {isQuizMode ? (
-            /* 2-Column Layout: Left Column = Joining Details, Right Column = Joined Participants */
+            /* 2-Column Layout: Left Column = Joining Details, Right Column = Joined Participants (narrow) */
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch animate-fadeIn">
               {/* Left Column: Joining Details */}
-              <div className="lg:col-span-5 flex flex-col">
+              <div className="lg:col-span-8 flex flex-col">
                 <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-sm text-center flex flex-col justify-between h-full space-y-5">
                   <div className="space-y-2">
                     <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-200 text-xs font-bold uppercase tracking-wider">
@@ -411,21 +411,21 @@ export default function PollPresenter() {
                     <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight leading-snug">
                       {poll.title}
                     </h2>
-                    <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
                       Scan the QR code with your phone camera or visit the link below to join.
                     </p>
                   </div>
 
                   {/* High-Contrast QR Code */}
-                  <div className="inline-block p-3.5 bg-white rounded-2xl border-2 border-slate-200 shadow-xs mx-auto">
+                  <div className="inline-block p-4 bg-white rounded-2xl border-2 border-slate-200 shadow-xs mx-auto">
                     {qrDataUrl ? (
                       <img
                         src={qrDataUrl}
                         alt="Scan to join poll"
-                        className="w-48 h-48 sm:w-56 sm:h-56 object-contain mx-auto"
+                        className="w-52 h-52 sm:w-60 sm:h-60 object-contain mx-auto"
                       />
                     ) : (
-                      <div className="w-48 h-48 bg-slate-100 rounded-2xl flex items-center justify-center animate-pulse">
+                      <div className="w-52 h-52 bg-slate-100 rounded-2xl flex items-center justify-center animate-pulse">
                         <QrCode className="w-12 h-12 text-slate-400" />
                       </div>
                     )}
@@ -451,72 +451,65 @@ export default function PollPresenter() {
                 </div>
               </div>
 
-              {/* Right Column: Joined Participants Roster */}
-              <div className="lg:col-span-7 flex flex-col">
-                <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-sm flex flex-col justify-between h-full space-y-4">
+              {/* Right Column: Joined Participants Roster (narrower, listed top-down) */}
+              <div className="lg:col-span-4 flex flex-col">
+                <div className="bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm flex flex-col justify-between h-full space-y-3">
                   <div>
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-2">
                       <div className="flex items-center space-x-2">
-                        <Trophy className="w-5 h-5 text-amber-500" />
-                        <h3 className="text-base font-bold text-slate-900">
-                          Participants Joined
+                        <Trophy className="w-4 h-4 text-amber-500" />
+                        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                          Joined Players
                         </h3>
                       </div>
-                      <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-black">
-                        {leaderboard.length} Ready
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-xs font-black">
+                        {leaderboard.length}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-500">
-                      Participants appear here live as they choose their nickname and avatar.
+                    <p className="text-[11px] text-slate-500">
+                      Players in lobby ready to play
                     </p>
                   </div>
 
-                  {/* Roster Grid / Placeholder */}
-                  <div className="flex-1 flex flex-col justify-center py-2">
+                  {/* Top-down vertical list */}
+                  <div className="flex-1 overflow-y-auto max-h-[460px] divide-y divide-slate-100 pr-1">
                     {leaderboard.length === 0 ? (
-                      <div className="py-16 text-center bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
-                        <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto text-2xl shadow-2xs">
-                          🚀
-                        </div>
-                        <h4 className="text-sm font-bold text-slate-800">
-                          No players have entered yet
-                        </h4>
-                        <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                          Scan the QR code on the left to join and pick your avatar!
-                        </p>
+                      <div className="py-16 text-center text-xs text-slate-400 italic space-y-2">
+                        <div className="text-3xl">🚀</div>
+                        <p>No players joined yet.</p>
+                        <p className="text-[10px] text-slate-400">Scan QR code to be the first!</p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-[460px] overflow-y-auto pr-1">
-                        {leaderboard.map((player, idx) => (
-                          <div
-                            key={player.participantId || player.participant_id || idx}
-                            className="p-3 rounded-2xl bg-slate-50 border border-slate-200/90 shadow-2xs flex items-center space-x-3 transition animate-in zoom-in-95 hover:border-brand-300 hover:bg-brand-50/30"
-                          >
-                            <span className="text-2xl sm:text-3xl shrink-0">
-                              {player.avatar || '🚀'}
+                      leaderboard.map((player, idx) => (
+                        <div
+                          key={player.participantId || player.participant_id || idx}
+                          className="py-2.5 px-2 flex items-center justify-between text-xs hover:bg-slate-50/80 rounded-xl transition"
+                        >
+                          <div className="flex items-center space-x-2.5 min-w-0">
+                            <span className="w-5 text-center font-bold text-slate-400">
+                              #{idx + 1}
                             </span>
-                            <div className="min-w-0 flex-1">
-                              <span className="block font-bold text-slate-900 text-xs sm:text-sm truncate">
-                                {player.name}
-                              </span>
-                              <span className="block text-[10px] font-semibold text-slate-600 uppercase tracking-wider">
-                                Player #{idx + 1}
-                              </span>
-                            </div>
+                            <span className="text-base shrink-0">{player.avatar || '🚀'}</span>
+                            <span className="font-bold text-slate-900 truncate max-w-[120px] sm:max-w-[140px]">
+                              {player.name}
+                            </span>
                           </div>
-                        ))}
-                      </div>
+                          <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/70 px-2 py-0.5 rounded-full shrink-0">
+                            Ready
+                          </span>
+                        </div>
+                      ))
                     )}
                   </div>
 
                   {/* Footer status */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
                     <span className="flex items-center space-x-1.5 font-medium">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                       <span>Live Lobby Roster</span>
                     </span>
                     <span className="font-semibold text-slate-700">
-                      {leaderboard.length} {leaderboard.length === 1 ? 'player' : 'players'} waiting
+                      {leaderboard.length} ready
                     </span>
                   </div>
                 </div>
@@ -732,16 +725,16 @@ export default function PollPresenter() {
               )}
             </div>
 
-            {/* 3. Right Column: Top 5 Live Leaderboard & Audience Q&A (Stacked) */}
+            {/* 3. Right Column: Top 3 Live Leaderboard & Audience Q&A (Stacked) */}
             {showSideColumn && (
               <div className="lg:col-span-3 flex flex-col gap-4">
-                {/* Top 5 Leaderboard (if Quiz Mode & enabled) */}
+                {/* Top 3 Leaderboard (if Quiz Mode & enabled) */}
                 {isQuizMode && showLeaderboard && (
                   <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-sm flex flex-col">
                     <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                       <div className="flex items-center space-x-2">
                         <Trophy className="w-4 h-4 text-amber-500" />
-                        <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">Top 5 Leaderboard</span>
+                        <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">Top 3 Leaderboard</span>
                       </div>
                       <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
                         {leaderboard.length} Players
@@ -754,14 +747,14 @@ export default function PollPresenter() {
                           No quiz scores recorded yet.
                         </div>
                       ) : (
-                        leaderboard.slice(0, 5).map((player, idx) => (
+                        leaderboard.slice(0, 3).map((player, idx) => (
                           <div
                             key={player.participantId || player.participant_id || idx}
                             className="py-2.5 flex items-center justify-between text-xs"
                           >
                             <div className="flex items-center space-x-2.5 min-w-0">
                               <span className={`w-5 text-center font-black ${
-                                idx === 0 ? 'text-amber-500' : idx === 1 ? 'text-slate-400' : idx === 2 ? 'text-orange-400' : 'text-slate-400'
+                                idx === 0 ? 'text-amber-500' : idx === 1 ? 'text-slate-400' : 'text-orange-400'
                               }`}>
                                 #{idx + 1}
                               </span>
@@ -778,7 +771,7 @@ export default function PollPresenter() {
                   </div>
                 )}
 
-                {/* Audience Q&A (stacked below Top 5 Leaderboard if both are displayed) */}
+                {/* Audience Q&A (stacked below Top 3 Leaderboard if both are displayed) */}
                 {poll.qa_enabled && showQaSidebar && (
                   <div className={`bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-sm flex flex-col ${
                     isQuizMode && showLeaderboard ? 'flex-1 min-h-[280px]' : 'h-full'

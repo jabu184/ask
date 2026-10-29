@@ -478,10 +478,10 @@ export default function PollBuilder() {
                     />
                     <div>
                       <span className="text-xs font-bold text-indigo-950 block">
-                        Display Live Leaderboard on Presenter Screen (Top 5 in side column)
+                        Display Live Leaderboard on Presenter Screen (Top 3 in side column)
                       </span>
                       <span className="text-[11px] text-indigo-800/80 block mt-0.5">
-                        Shows the top 5 scoring participants on the presenter display, sitting alongside the active question (stacked above audience Q&amp;A if both are enabled).
+                        Shows the top 3 scoring participants on the presenter display, sitting alongside the active question (stacked above audience Q&amp;A if both are enabled).
                       </span>
                     </div>
                   </label>
