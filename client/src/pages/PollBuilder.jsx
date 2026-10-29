@@ -21,7 +21,8 @@ import {
   CheckCircle2,
   RefreshCw,
   Copy,
-  Trophy
+  Trophy,
+  ListOrdered
 } from 'lucide-react';
 
 const QUESTION_TYPES = [
@@ -45,6 +46,13 @@ const QUESTION_TYPES = [
     desc: '1-5 or 1-10 star rating with score card',
     icon: Star,
     color: 'text-amber-600 bg-amber-50 border-amber-200'
+  },
+  {
+    type: 'ranking',
+    label: 'Rank Order',
+    desc: 'Respondents rank options; collective Borda scores',
+    icon: ListOrdered,
+    color: 'text-emerald-600 bg-emerald-50 border-emerald-200'
   }
 ];
 
@@ -233,7 +241,7 @@ export default function PollBuilder() {
         setError(`Question #${i + 1} is missing a title/prompt.`);
         return false;
       }
-      if (q.question_type === 'multiple_choice') {
+      if (q.question_type === 'multiple_choice' || q.question_type === 'ranking') {
         const opts = (q.options || []).map((o) => o.trim()).filter(Boolean);
         if (opts.length < 2) {
           setError(`Question #${i + 1} needs at least 2 non-empty options.`);
@@ -261,7 +269,7 @@ export default function PollBuilder() {
         id: q.id,
         question_text: q.question_text.trim(),
         question_type: q.question_type,
-        options: q.question_type === 'multiple_choice' ? q.options.map((o) => o.trim()).filter(Boolean) : null,
+        options: (q.question_type === 'multiple_choice' || q.question_type === 'ranking') ? q.options.map((o) => o.trim()).filter(Boolean) : null,
         correctAnswer: q.question_type === 'multiple_choice' ? q.correctAnswer || null : null,
         maxRating: q.question_type === 'rating' ? q.maxRating || 5 : null,
         allowMultiple: q.question_type === 'word_cloud' ? (q.allowMultiple !== false) : true
@@ -727,6 +735,54 @@ export default function PollBuilder() {
                         }`}
                       >
                         1 to 10 Stars
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {q.question_type === 'ranking' && (
+                  <div className="pl-2 space-y-2.5 bg-emerald-50/40 p-3.5 rounded-xl border border-emerald-100">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider flex items-center space-x-1.5">
+                        <ListOrdered className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Options to Rank</span>
+                      </div>
+                      <span className="text-[11px] text-emerald-700/80">
+                        Respondents rank these options in order. Collective results are calculated live.
+                      </span>
+                    </div>
+
+                    {(q.options || []).map((opt, optIdx) => (
+                      <div key={optIdx} className="flex items-center space-x-2">
+                        <div className="w-6 h-6 rounded-lg border border-emerald-200 bg-white flex items-center justify-center text-[11px] font-bold text-emerald-700 flex-shrink-0">
+                          #{optIdx + 1}
+                        </div>
+                        <input
+                          type="text"
+                          value={opt}
+                          onChange={(e) => updateOption(qIdx, optIdx, e.target.value)}
+                          placeholder={`Item ${optIdx + 1}`}
+                          className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeOption(qIdx, optIdx)}
+                          className="p-1 text-slate-400 hover:text-rose-500 rounded hover:bg-white transition-colors"
+                          title="Remove option"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => addOption(qIdx)}
+                        className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-emerald-100/60 hover:bg-emerald-100 transition-colors w-fit"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Ranking Option</span>
                       </button>
                     </div>
                   </div>

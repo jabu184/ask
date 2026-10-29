@@ -4,6 +4,7 @@ import { pollApi } from '../services/api';
 import WordCloud from '../components/WordCloud';
 import LiveBarChart from '../components/LiveBarChart';
 import LiveRatingChart from '../components/LiveRatingChart';
+import LiveRankingChart from '../components/LiveRankingChart';
 import SEO from '../components/SEO';
 import {
   ArrowLeft,
@@ -19,7 +20,9 @@ import {
   Clock,
   Sparkles,
   AlertCircle,
-  Trophy
+  Trophy,
+  Trash2,
+  ListOrdered
 } from 'lucide-react';
 
 export default function PollAnalytics() {
@@ -27,6 +30,23 @@ export default function PollAnalytics() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [analytics, setAnalytics] = useState(null);
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
+  const [purgingData, setPurgingData] = useState(false);
+
+  const handlePurgeData = async () => {
+    if (purgingData) return;
+    setPurgingData(true);
+    try {
+      await pollApi.purgeData(id);
+      const refreshed = await pollApi.getAnalytics(id);
+      setAnalytics(refreshed);
+      setShowPurgeModal(false);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to purge poll data');
+    } finally {
+      setPurgingData(false);
+    }
+  };
 
   useEffect(() => {
     const fetchAnalytics = async () => {
@@ -115,6 +135,16 @@ export default function PollAnalytics() {
         </div>
 
         <div className="flex items-center space-x-3">
+          <button
+            type="button"
+            onClick={() => setShowPurgeModal(true)}
+            className="px-3.5 py-2 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 bg-white hover:bg-rose-50 hover:text-rose-600 hover:border-rose-300 shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"
+            title="Purge all responses, quiz players, and Q&A from this poll"
+          >
+            <Trash2 className="w-4 h-4 text-rose-500" />
+            <span className="hidden sm:inline">Purge Data</span>
+          </button>
+
           <a
             href={pollApi.getCsvExportUrl(poll.id)}
             download
@@ -135,15 +165,15 @@ export default function PollAnalytics() {
       </div>
 
       {/* KPI Overview Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
             Total Votes
           </div>
-          <div className="text-3xl font-extrabold text-slate-900">{stats.totalVotes}</div>
-          <div className="text-[11px] text-slate-400 mt-1 flex items-center space-x-1">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Across all questions</span>
+          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">{stats.totalVotes}</div>
+          <div className="text-[10px] text-slate-400 mt-1 flex items-center space-x-1">
+            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+            <span>All questions</span>
           </div>
         </div>
 
@@ -151,10 +181,30 @@ export default function PollAnalytics() {
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
             Unique Voters
           </div>
-          <div className="text-3xl font-extrabold text-indigo-600">{stats.uniqueParticipants}</div>
-          <div className="text-[11px] text-slate-400 mt-1 flex items-center space-x-1">
-            <Users className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Active participants</span>
+          <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600">{stats.uniqueParticipants}</div>
+          <div className="text-[10px] text-slate-400 mt-1 flex items-center space-x-1">
+            <Users className="w-3 h-3 text-emerald-500" />
+            <span>Voted at least once</span>
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+            Poll Turnout
+          </div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-indigo-600">{stats.pollEngagementPct ?? 0}%</div>
+          <div className="text-[10px] text-slate-400 mt-1">
+            {stats.uniqueVoters || stats.uniqueParticipants || 0} of {stats.totalAudience || stats.uniqueParticipants || 0} audience
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+            Q&A Engagement
+          </div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-violet-600">{stats.qaEngagementPct ?? 0}%</div>
+          <div className="text-[10px] text-slate-400 mt-1">
+            {stats.uniqueQaParticipants || 0} asked or upvoted
           </div>
         </div>
 
@@ -162,19 +212,19 @@ export default function PollAnalytics() {
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
             Questions
           </div>
-          <div className="text-3xl font-extrabold text-slate-900">{stats.questionCount}</div>
-          <div className="text-[11px] text-slate-400 mt-1">
+          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">{stats.questionCount}</div>
+          <div className="text-[10px] text-slate-400 mt-1">
             Interactive activities
           </div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-            Q&A Asked
+            Q&A Questions
           </div>
-          <div className="text-3xl font-extrabold text-violet-600">{stats.qaCount}</div>
-          <div className="text-[11px] text-slate-400 mt-1 flex items-center space-x-1">
-            <MessageSquare className="w-3.5 h-3.5 text-violet-400" />
+          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">{stats.qaCount}</div>
+          <div className="text-[10px] text-slate-400 mt-1 flex items-center space-x-1">
+            <MessageSquare className="w-3 h-3 text-slate-400" />
             <span>Audience questions</span>
           </div>
         </div>
@@ -277,6 +327,13 @@ export default function PollAnalytics() {
                   counts={q.results?.counts || {}}
                 />
               )}
+
+              {q.question_type === 'ranking' && (
+                <LiveRankingChart
+                  rankingData={q.results}
+                  totalVotes={q.results?.totalVotes || 0}
+                />
+              )}
             </div>
           </div>
         ))}
@@ -312,6 +369,67 @@ export default function PollAnalytics() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {/* Danger Zone: Purge Data */}
+      <div className="bg-rose-50/50 border border-rose-200 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-8">
+        <div>
+          <div className="flex items-center space-x-2 text-rose-800 font-bold text-sm mb-1">
+            <Trash2 className="w-4 h-4 text-rose-600" />
+            <span>Purge Poll Response Data</span>
+          </div>
+          <p className="text-xs text-rose-700/80 max-w-xl">
+            Reset this poll back to zero responses. Permanently deletes all participant votes, scores, quiz players, and audience Q&A questions while keeping the poll questions and code intact.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowPurgeModal(true)}
+          className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs shadow-xs transition flex items-center justify-center space-x-2 shrink-0 cursor-pointer"
+        >
+          <Trash2 className="w-4 h-4" />
+          <span>Purge All Data</span>
+        </button>
+      </div>
+
+      {/* Purge Data Confirmation Modal */}
+      {showPurgeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-xl border border-slate-200 space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center space-x-3 text-rose-600">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-lg leading-tight">Purge All Poll Data?</h3>
+                <p className="text-xs text-slate-500">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+              This will permanently delete all <strong>participant responses</strong>, <strong>quiz players & scores</strong>, and <strong>audience Q&A questions</strong>. Your questions and poll PIN will be preserved so you can reuse this poll for a new session.
+            </p>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                disabled={purgingData}
+                onClick={() => setShowPurgeModal(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={purgingData}
+                onClick={handlePurgeData}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs shadow-sm transition flex items-center space-x-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{purgingData ? 'Purging Data...' : 'Yes, Purge All Data'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

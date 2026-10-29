@@ -26,7 +26,8 @@ import {
   ThumbsUp,
   QrCode,
   Hash,
-  Play
+  Play,
+  Trophy
 } from 'lucide-react';
 
 export default function Features() {
@@ -206,76 +207,81 @@ export default function Features() {
         </div>
       </section>
 
-      {/* NEW: Live Interactive Polling Section */}
-      <section className="py-16 bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900 text-white relative overflow-hidden">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center max-w-3xl mx-auto mb-12">
-            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-xs font-bold mb-4">
-              <Radio className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
-              <span>Brand New Feature</span>
+      {/* Live Interactive Polling & Audience Q&A Section */}
+      <section className="py-16 sm:py-24 bg-white border-y border-slate-200">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-3xl mx-auto mb-14">
+            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-brand-50 border border-brand-200 text-brand-700 text-xs font-bold mb-4 shadow-2xs">
+              <Radio className="w-3.5 h-3.5 text-brand-600 animate-pulse" />
+              <span>Real-Time Engagement</span>
             </div>
-            <h2 className="text-3xl sm:text-5xl font-black tracking-tight text-white mb-4">
-              Live Interactive Polling & Q&A
+            <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-slate-900 mb-4">
+              Live Interactive Polling, Quizzes & Audience Q&A
             </h2>
-            <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-              Engage your audience in real time during webinars, all-hands, conferences, and classroom lectures — an all-in-one interactive polling solution built right in.
+            <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
+              Engage your audience synchronously during all-hands, webinars, classroom lectures, and conferences. Collect live responses, run quiz competitions with leaderboards, and moderate questions in real time.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-            <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
-              <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center mb-4">
+            <div className="bg-slate-50/70 border border-slate-200 rounded-2xl p-6 shadow-xs hover:border-slate-300 transition">
+              <div className="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 border border-brand-100 flex items-center justify-center mb-4">
                 <Cloud className="w-5 h-5" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-2">Live Word Clouds & Charts</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Watch animated word clouds scale with crowd frequency, or reveal percentage bar charts as answers stream in synchronously.
+              <h3 className="text-base font-bold text-slate-900 mb-2">Word Clouds & Ranked Voting</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Watch animated word clouds scale with crowd frequency, collect collective priority rankings with Borda count, and reveal live percentage bar charts as answers stream in.
               </p>
             </div>
 
-            <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
-              <div className="w-10 h-10 rounded-xl bg-violet-500/20 text-violet-400 flex items-center justify-center mb-4">
-                <ThumbsUp className="w-5 h-5" />
+            <div className="bg-slate-50/70 border border-slate-200 rounded-2xl p-6 shadow-xs hover:border-slate-300 transition">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mb-4">
+                <Trophy className="w-5 h-5 text-amber-500" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-2">Audience Q&A & Upvoting</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Attendees submit questions anonymously and upvote top queries. Hosts can moderate, highlight questions on stage, or mark them answered.
+              <h3 className="text-base font-bold text-slate-900 mb-2">Quiz Mode & Live Leaderboards</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Turn questions into competitive quizzes. Participants pick fun avatars, score points for correct answers, and compete on the real-time presenter screen leaderboard.
               </p>
             </div>
 
-            <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center mb-4">
-                <Tv className="w-5 h-5" />
+            <div className="bg-slate-50/70 border border-slate-200 rounded-2xl p-6 shadow-xs hover:border-slate-300 transition">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center mb-4">
+                <MessageSquare className="w-5 h-5 text-indigo-600" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-2">Fullscreen Projector View</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Dedicated cinematic screen-share mode (`/p/:code/present`) with large QR code and PIN for instant zero-app mobile phone joining.
+              <h3 className="text-base font-bold text-slate-900 mb-2">Audience Q&A & Upvoting</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Attendees submit questions (named or anonymously) and upvote peers' questions. Hosts can moderate incoming submissions, pin questions to the stage, and mark them answered.
               </p>
             </div>
           </div>
 
-          {/* Quick Join / Host CTAs */}
-          <div className="bg-indigo-900/40 border border-indigo-500/30 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 backdrop-blur-md">
+          {/* Quick Join / Host Callout Card */}
+          <div className="bg-gradient-to-r from-brand-50/80 via-indigo-50/60 to-slate-50 border border-brand-200/80 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xs">
             <div>
-              <div className="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-1 flex items-center space-x-1.5">
-                <Hash className="w-4 h-4 text-indigo-400" />
-                <span>Have a 6-Digit PIN from a Speaker?</span>
+              <div className="text-xs font-bold text-brand-700 uppercase tracking-wider mb-1 flex items-center space-x-1.5">
+                <Hash className="w-4 h-4 text-brand-600" />
+                <span>Join a Live Poll with a 6-Digit PIN</span>
               </div>
-              <h4 className="text-xl font-extrabold text-white">Join an ongoing live poll right now</h4>
+              <h4 className="text-lg sm:text-xl font-extrabold text-slate-900">
+                Participating in an active presentation?
+              </h4>
+              <p className="text-xs text-slate-500 mt-0.5">
+                No apps or account required. Enter the PIN or scan the on-screen QR code from any mobile browser.
+              </p>
             </div>
-            <div className="flex items-center space-x-3 w-full sm:w-auto">
+            <div className="flex items-center space-x-3 w-full sm:w-auto shrink-0">
               <Link
                 to="/p"
-                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white font-bold text-sm shadow-lg shadow-indigo-500/30 transition text-center flex items-center justify-center space-x-2"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-sm transition text-center flex items-center justify-center space-x-2"
               >
                 <span>Enter PIN Code</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
                 to="/polls/new"
-                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-sm transition text-center"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs shadow-xs transition text-center"
               >
-                Host a Poll
+                Create a Poll
               </Link>
             </div>
           </div>

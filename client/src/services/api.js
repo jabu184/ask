@@ -211,6 +211,10 @@ export const pollApi = {
     const res = await api.get(`/polls/${id}/analytics`);
     return res.data;
   },
+  purgeData: async (id) => {
+    const res = await api.post(`/polls/${id}/purge`);
+    return res.data;
+  },
   getCsvExportUrl: (id) => `/api/polls/${id}/export`,
 };
 

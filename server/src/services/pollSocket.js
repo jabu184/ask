@@ -95,6 +95,82 @@ function computeQuestionResults(question, pollId) {
     };
   }
 
+  if (question.question_type === 'ranking') {
+    let options = [];
+    try {
+      options = typeof question.options_json === 'string' ? JSON.parse(question.options_json) : (question.options_json || []);
+    } catch (e) {
+      options = [];
+    }
+
+    const n = options.length;
+    const scores = {};
+    const rankSums = {};
+    const rankCounts = {};
+
+    options.forEach(opt => {
+      scores[opt] = 0;
+      rankSums[opt] = 0;
+      rankCounts[opt] = {};
+      for (let r = 1; r <= n; r++) rankCounts[opt][r] = 0;
+    });
+
+    let validBallots = 0;
+    rawVotes.forEach(v => {
+      let ranking = [];
+      try {
+        ranking = typeof v.value === 'string' && (v.value.startsWith('[') || v.value.startsWith('{'))
+          ? JSON.parse(v.value)
+          : String(v.value || '').split(',').map(s => s.trim()).filter(Boolean);
+      } catch (e) {
+        ranking = String(v.value || '').split(',').map(s => s.trim()).filter(Boolean);
+      }
+
+      if (Array.isArray(ranking) && ranking.length > 0) {
+        validBallots++;
+        ranking.forEach((opt, idx) => {
+          if (scores[opt] !== undefined) {
+            const rankPos = idx + 1;
+            const pts = Math.max(1, n - idx);
+            scores[opt] += pts;
+            rankSums[opt] += rankPos;
+            rankCounts[opt][rankPos] = (rankCounts[opt][rankPos] || 0) + 1;
+          }
+        });
+      }
+    });
+
+    const maxScore = validBallots > 0 ? validBallots * n : 1;
+    const rankedOptions = options.map(opt => {
+      const avgRank = validBallots > 0 && rankSums[opt] > 0
+        ? Number((rankSums[opt] / validBallots).toFixed(1))
+        : 0;
+      const score = scores[opt] || 0;
+      const percentage = validBallots > 0 ? Math.round((score / maxScore) * 100) : 0;
+
+      return {
+        option: opt,
+        score,
+        averageRank: avgRank,
+        percentage,
+        rankCounts: rankCounts[opt]
+      };
+    }).sort((a, b) => b.score - a.score || a.averageRank - b.averageRank);
+
+    const results = rankedOptions.map((item, idx) => ({
+      ...item,
+      rank: idx + 1
+    }));
+
+    return {
+      type: 'ranking',
+      totalVotes,
+      validBallots,
+      optionsCount: n,
+      results
+    };
+  }
+
   // open_text or default
   return {
     type: 'open_text',
@@ -185,6 +261,13 @@ function getPollState(pollId, participantId = null, isHost = false) {
     userVotes = db.prepare('SELECT id, value, created_at FROM poll_votes WHERE question_id = ? AND participant_id = ? ORDER BY created_at ASC').all(currentQuestion.id, participantId);
     if (userVotes.length > 0) {
       userVote = userVotes[userVotes.length - 1].value;
+      if (currentQuestion.question_type === 'ranking') {
+        try {
+          if (typeof userVote === 'string' && (userVote.startsWith('[') || userVote.startsWith('{'))) {
+            userVote = JSON.parse(userVote);
+          }
+        } catch (e) {}
+      }
     }
   }
 
@@ -345,15 +428,16 @@ function initPollSocket(httpServer) {
             }
           });
         } else {
-          // Single vote upsert
+          // Single vote or ranking array upsert
+          const valStr = typeof value === 'object' ? JSON.stringify(value) : String(value).trim();
           const existing = db.prepare('SELECT id FROM poll_votes WHERE question_id = ? AND participant_id = ?').get(questionId, participantId);
           if (existing) {
-            db.prepare('UPDATE poll_votes SET value = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?').run(String(value).trim(), existing.id);
+            db.prepare('UPDATE poll_votes SET value = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?').run(valStr, existing.id);
           } else {
             db.prepare(`
               INSERT INTO poll_votes (id, poll_id, question_id, participant_id, value)
               VALUES (?, ?, ?, ?, ?)
-            `).run(generateId(), pollId, questionId, participantId, String(value).trim());
+            `).run(generateId(), pollId, questionId, participantId, valStr);
           }
         }
 

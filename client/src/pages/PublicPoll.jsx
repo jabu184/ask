@@ -5,6 +5,7 @@ import { publicPollApi } from '../services/api';
 import WordCloud from '../components/WordCloud';
 import LiveBarChart from '../components/LiveBarChart';
 import LiveRatingChart from '../components/LiveRatingChart';
+import LiveRankingChart from '../components/LiveRankingChart';
 import SEO from '../components/SEO';
 import {
   Radio,
@@ -19,7 +20,12 @@ import {
   HelpCircle,
   Sparkles,
   X,
-  Trophy
+  Trophy,
+  ChevronUp,
+  ChevronDown,
+  ListOrdered,
+  Check,
+  Edit3
 } from 'lucide-react';
 
 const QUIZ_AVATARS = ['🚀', '🦁', '🦊', '🐼', '🐨', '🦄', '⚡', '🎯', '🌟', '🐬', '🦉', '👑'];
@@ -54,6 +60,9 @@ export default function PublicPoll() {
   const [showResults, setShowResults] = useState(true);
   const [participantCount, setParticipantCount] = useState(1);
 
+  // Ranking question state
+  const [rankedItems, setRankedItems] = useState([]);
+
   // Quiz Mode state
   const [isQuizMode, setIsQuizMode] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -70,6 +79,11 @@ export default function PublicPoll() {
   const [quizAvatar, setQuizAvatar] = useState('🚀');
   const [submittingQuizProfile, setSubmittingQuizProfile] = useState(false);
 
+  // Edit Profile Modal
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editProfileName, setEditProfileName] = useState('');
+  const [editProfileAvatar, setEditProfileAvatar] = useState('🚀');
+
   // Form inputs for voting
   const [textInput, setTextInput] = useState('');
   const [submittingVote, setSubmittingVote] = useState(false);
@@ -79,6 +93,7 @@ export default function PublicPoll() {
   const [userUpvotes, setUserUpvotes] = useState([]);
   const [newQuestionText, setNewQuestionText] = useState('');
   const [authorName, setAuthorName] = useState('');
+  const [isAnonymousQa, setIsAnonymousQa] = useState(false);
   const [submittingQa, setSubmittingQa] = useState(false);
   const [qaNotice, setQaNotice] = useState('');
 
@@ -418,6 +433,41 @@ export default function PublicPoll() {
     }
   };
 
+  // Sync authorName with quizProfile name
+  useEffect(() => {
+    if (quizProfile?.name && !authorName) {
+      setAuthorName(quizProfile.name);
+    }
+  }, [quizProfile]);
+
+  // Sync ranking options when question or vote changes
+  useEffect(() => {
+    if (currentQuestion?.question_type === 'ranking') {
+      let initial = [];
+      if (userVote) {
+        try {
+          initial = Array.isArray(userVote) ? userVote : JSON.parse(userVote);
+        } catch (e) {
+          initial = String(userVote).split(',').map((s) => s.trim()).filter(Boolean);
+        }
+      }
+      if (!initial || initial.length === 0) {
+        initial = Array.isArray(currentQuestion.options) ? [...currentQuestion.options] : [];
+      }
+      setRankedItems(initial);
+    }
+  }, [currentQuestion, userVote]);
+
+  const moveRankItem = (index, direction) => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= rankedItems.length) return;
+    const next = [...rankedItems];
+    const item = next[index];
+    next[index] = next[targetIndex];
+    next[targetIndex] = item;
+    setRankedItems(next);
+  };
+
   // Handle Quiz Mode Participant Registration
   const handleRegisterQuizParticipant = async (e) => {
     if (e) e.preventDefault();
@@ -433,6 +483,7 @@ export default function PublicPoll() {
     };
 
     setQuizProfile(profileData);
+    if (!authorName) setAuthorName(trimmed);
     try {
       localStorage.setItem('ask_quiz_' + code, JSON.stringify(profileData));
     } catch (err) {}
@@ -459,17 +510,64 @@ export default function PublicPoll() {
     }
   };
 
+  // Handle Updating Profile (Name & Avatar)
+  const handleSaveProfile = async (e) => {
+    if (e) e.preventDefault();
+    const trimmed = editProfileName.trim();
+    if (!trimmed) return;
+
+    const updatedProfile = {
+      ...(quizProfile || {}),
+      name: trimmed,
+      avatar: editProfileAvatar || '🚀',
+      participant_id: participantId
+    };
+
+    setQuizProfile(updatedProfile);
+    if (!authorName || authorName === quizProfile?.name) {
+      setAuthorName(trimmed);
+    }
+    try {
+      localStorage.setItem('ask_quiz_' + code, JSON.stringify(updatedProfile));
+    } catch (err) {}
+
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('poll:register_quiz_participant', {
+        pollId: poll.id,
+        participantId,
+        name: trimmed,
+        avatar: editProfileAvatar || '🚀'
+      });
+    }
+
+    try {
+      await publicPollApi.registerParticipant(poll.id, {
+        participantId,
+        name: trimmed,
+        avatar: editProfileAvatar || '🚀'
+      });
+    } catch (err) {
+      console.error('Participant profile update error', err);
+    } finally {
+      setIsEditingProfile(false);
+    }
+  };
+
   // Handle Q&A submit
   const handleQaSubmit = (e) => {
     e.preventDefault();
     if (!newQuestionText.trim() || submittingQa) return;
     setSubmittingQa(true);
 
+    const effectiveName = isAnonymousQa
+      ? 'Anonymous'
+      : (authorName.trim() || quizProfile?.name || 'Anonymous');
+
     if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit('qa:submit', {
         pollId: poll.id,
         participantId,
-        author_name: authorName.trim() || 'Anonymous',
+        author_name: effectiveName,
         question_text: newQuestionText.trim()
       });
       setNewQuestionText('');
@@ -478,7 +576,7 @@ export default function PublicPoll() {
       publicPollApi
         .submitQA(poll.id, {
           participantId,
-          author_name: authorName.trim() || 'Anonymous',
+          author_name: effectiveName,
           question_text: newQuestionText.trim()
         })
         .then(() => {
@@ -574,10 +672,20 @@ export default function PublicPoll() {
 
           <div className="flex items-center gap-2">
             {isQuizMode && quizProfile && (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditProfileName(quizProfile.name || '');
+                  setEditProfileAvatar(quizProfile.avatar || '🚀');
+                  setIsEditingProfile(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs transition active:scale-95 group cursor-pointer"
+                title="Click to change your nickname and avatar"
+              >
                 <span className="text-base">{quizProfile.avatar || '🚀'}</span>
                 <span className="truncate max-w-[120px]">{quizProfile.name}</span>
-              </div>
+                <Edit3 className="w-3 h-3 text-amber-600/70 group-hover:text-amber-800 shrink-0 ml-0.5" />
+              </button>
             )}
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-semibold">
               <Users className="w-3.5 h-3.5 text-slate-500" />
@@ -755,43 +863,6 @@ export default function PublicPoll() {
                   </div>
                 )}
 
-                {/* Response Status / Correct Answer Banner */}
-                {showCorrectAnswer && correctAnswer && currentQuestion.question_type === 'multiple_choice' ? (
-                  <div className={`mb-6 p-4 rounded-2xl border flex items-center gap-3 text-sm font-semibold animate-in fade-in shadow-xs ${
-                    userVote === correctAnswer
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
-                      : 'bg-amber-50 border-amber-300 text-amber-950'
-                  }`}>
-                    <CheckCircle2 className={`w-5 h-5 shrink-0 ${userVote === correctAnswer ? 'text-emerald-600' : 'text-amber-600'}`} />
-                    <div className="flex-1">
-                      <p className="font-bold">
-                        {userVote === correctAnswer
-                          ? '🎉 You got it right!'
-                          : 'The correct answer has been revealed!'}
-                      </p>
-                      <p className="text-xs font-normal mt-0.5 opacity-90">
-                        Correct Answer: <strong className="font-bold underline decoration-2">{correctAnswer}</strong>
-                        {userVote && userVote !== correctAnswer && (
-                          <span> • Your choice was: <strong>{userVote}</strong></span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                ) : hasVoted && currentQuestion.question_type !== 'word_cloud' ? (
-                  <div className="mb-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-3 text-emerald-800 text-sm font-semibold animate-in fade-in">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                    <div className="flex-1">
-                      <p>Your response is recorded!</p>
-                      {userVote && (
-                        <p className="text-xs text-emerald-700/80 font-normal mt-0.5">
-                          Current choice: <strong className="font-bold">{userVote}</strong>
-                          {votingOpen && ' • Tap another option below anytime to change your answer'}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-
                 {/* Question Input Form / Options (Active whenever voting is open, allows changing vote) */}
                 {votingOpen ? (
                   <div className="space-y-4">
@@ -801,6 +872,7 @@ export default function PublicPoll() {
                         {currentQuestion.options?.map((opt, i) => {
                           const isSelected = String(userVote) === String(opt);
                           const isCorrect = showCorrectAnswer && Boolean(correctAnswer) && String(opt) === String(correctAnswer);
+                          const isIncorrectChoice = showCorrectAnswer && Boolean(correctAnswer) && isSelected && !isCorrect;
 
                           return (
                             <button
@@ -810,6 +882,8 @@ export default function PublicPoll() {
                               className={`w-full text-left p-4 rounded-2xl border-2 transition-all active:scale-99 shadow-xs flex items-center justify-between group ${
                                 isCorrect
                                   ? 'border-emerald-500 bg-emerald-50/80 text-emerald-950 font-bold ring-2 ring-emerald-500/20'
+                                  : isIncorrectChoice
+                                  ? 'border-rose-500 bg-rose-50/80 text-rose-950 font-bold ring-2 ring-rose-500/20'
                                   : isSelected
                                   ? 'border-brand-600 bg-brand-50/70 text-brand-950 font-bold ring-2 ring-brand-500/20'
                                   : 'border-slate-200 hover:border-brand-400 hover:bg-slate-50 text-slate-800 font-semibold'
@@ -823,7 +897,7 @@ export default function PublicPoll() {
                                     ? 'border-brand-600 bg-brand-600 text-white'
                                     : 'border-slate-300 text-slate-500 group-hover:border-brand-400'
                                 }`}>
-                                  {isCorrect ? '✓' : isSelected ? '✓' : String.fromCharCode(65 + i)}
+                                  {isCorrect ? '✓' : isIncorrectChoice ? '✕' : isSelected ? '✓' : String.fromCharCode(65 + i)}
                                 </span>
                                 <span>{opt}</span>
                               </div>
@@ -834,7 +908,13 @@ export default function PublicPoll() {
                                     <span>Correct Answer</span>
                                   </span>
                                 )}
-                                {isSelected && (
+                                {isIncorrectChoice && (
+                                  <span className="text-xs font-bold text-rose-800 px-2.5 py-0.5 rounded-full bg-rose-100 border border-rose-300 flex items-center space-x-1 shadow-2xs">
+                                    <X className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>Your Choice (Incorrect)</span>
+                                  </span>
+                                )}
+                                {isSelected && !showCorrectAnswer && (
                                   <span className="text-xs font-bold text-brand-600 px-2 py-0.5 rounded-full bg-brand-100">
                                     Your Choice
                                   </span>
@@ -989,6 +1069,111 @@ export default function PublicPoll() {
                         </div>
                       </div>
                     )}
+
+                    {/* Ranking Question */}
+                    {currentQuestion.question_type === 'ranking' && (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between text-xs text-slate-500 font-semibold px-1">
+                          <span className="flex items-center gap-1.5">
+                            <ListOrdered className="w-3.5 h-3.5 text-brand-600" />
+                            <span>Rank in your preferred order:</span>
+                          </span>
+                          <span className="text-[11px] text-slate-400">Use ▲ ▼ to reorder</span>
+                        </div>
+
+                        <div className="space-y-2">
+                          {rankedItems.map((item, idx) => (
+                            <div
+                              key={idx}
+                              className="p-3.5 rounded-2xl bg-white border-2 border-slate-200 hover:border-brand-300 shadow-2xs flex items-center justify-between gap-3 transition"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span className="w-7 h-7 rounded-xl bg-slate-900 text-white font-black text-xs flex items-center justify-center shrink-0">
+                                  #{idx + 1}
+                                </span>
+                                <span className="text-sm sm:text-base font-semibold text-slate-900 truncate">
+                                  {item}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  disabled={idx === 0 || submittingVote}
+                                  onClick={() => moveRankItem(idx, 'up')}
+                                  className="p-2 rounded-xl bg-slate-100 hover:bg-brand-50 text-slate-600 hover:text-brand-600 disabled:opacity-25 transition active:scale-95"
+                                  title="Move Up"
+                                >
+                                  <ChevronUp className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={idx === rankedItems.length - 1 || submittingVote}
+                                  onClick={() => moveRankItem(idx, 'down')}
+                                  className="p-2 rounded-xl bg-slate-100 hover:bg-brand-50 text-slate-600 hover:text-brand-600 disabled:opacity-25 transition active:scale-95"
+                                  title="Move Down"
+                                >
+                                  <ChevronDown className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={submittingVote || rankedItems.length === 0}
+                          onClick={() => handleVote(rankedItems)}
+                          className="w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-sm shadow-sm transition active:scale-98 flex items-center justify-center gap-2"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>{hasVoted ? 'Update Ranking' : 'Submit Ranking'}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
+                {/* Response Status / Correct Answer Banner - sits BELOW choices */}
+                {showCorrectAnswer && correctAnswer && currentQuestion.question_type === 'multiple_choice' ? (
+                  <div className={`mt-5 p-4 rounded-2xl border flex items-center gap-3 text-sm font-semibold animate-in fade-in shadow-xs ${
+                    userVote === correctAnswer
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                      : 'bg-rose-50 border-rose-300 text-rose-950'
+                  }`}>
+                    {userVote === correctAnswer ? (
+                      <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
+                    ) : (
+                      <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
+                    )}
+                    <div className="flex-1">
+                      <p className="font-bold">
+                        {userVote === correctAnswer
+                          ? '🎉 You got it right!'
+                          : 'Your choice was incorrect.'}
+                      </p>
+                      <p className="text-xs font-normal mt-0.5 opacity-90">
+                        Correct Answer: <strong className="font-bold underline decoration-2">{correctAnswer}</strong>
+                        {userVote && userVote !== correctAnswer && (
+                          <span> • You answered: <strong>{userVote}</strong></span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                ) : hasVoted && currentQuestion.question_type !== 'word_cloud' ? (
+                  <div className="mt-5 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-3 text-emerald-800 text-sm font-semibold animate-in fade-in">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <div className="flex-1">
+                      <p>Your response is recorded!</p>
+                      {userVote && (
+                        <p className="text-xs text-emerald-700/80 font-normal mt-0.5">
+                          Current choice: <strong className="font-bold">
+                            {Array.isArray(userVote) ? 'Your custom ranking' : userVote}
+                          </strong>
+                          {votingOpen && ' • You can update your answer anytime above'}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 ) : null}
 
@@ -1020,6 +1205,10 @@ export default function PublicPoll() {
 
                     {currentQuestion.question_type === 'rating' && (
                       <LiveRatingChart ratingData={liveResults} />
+                    )}
+
+                    {currentQuestion.question_type === 'ranking' && (
+                      <LiveRankingChart rankingData={liveResults} />
                     )}
 
                     {currentQuestion.question_type === 'open_text' && (
@@ -1063,18 +1252,33 @@ export default function PublicPoll() {
                   className="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 focus:border-brand-500 focus:ring-0 text-sm font-medium text-slate-900 placeholder:text-slate-400"
                 />
 
-                <div className="flex items-center gap-3">
-                  <input
-                    type="text"
-                    value={authorName}
-                    onChange={(e) => setAuthorName(e.target.value)}
-                    placeholder="Your name (optional)"
-                    className="flex-1 px-3.5 py-2 rounded-xl border border-slate-200 text-xs text-slate-700 placeholder:text-slate-400"
-                  />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={isAnonymousQa}
+                        onChange={(e) => setIsAnonymousQa(e.target.checked)}
+                        className="w-4 h-4 text-brand-600 rounded border-slate-300 focus:ring-brand-500"
+                      />
+                      <span>Ask anonymously</span>
+                    </label>
+
+                    {!isAnonymousQa && (
+                      <input
+                        type="text"
+                        value={authorName}
+                        onChange={(e) => setAuthorName(e.target.value)}
+                        placeholder="Your name"
+                        className="px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-700 placeholder:text-slate-400 max-w-[180px]"
+                      />
+                    )}
+                  </div>
+
                   <button
                     type="submit"
                     disabled={!newQuestionText.trim() || submittingQa}
-                    className="py-2 px-4 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
+                    className="py-2 px-4 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-1.5 ml-auto"
                   >
                     <Send className="w-3.5 h-3.5" />
                     <span>Send</span>
@@ -1147,6 +1351,84 @@ export default function PublicPoll() {
           </div>
         )}
       </main>
+
+      {/* Edit Profile Modal */}
+      {isEditingProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-xl border border-slate-200 space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center space-x-2">
+                <Trophy className="w-5 h-5 text-amber-500" />
+                <h3 className="font-extrabold text-slate-900 text-base">Edit Player Profile</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditingProfile(false)}
+                className="p-1 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
+                  Nickname
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={30}
+                  value={editProfileName}
+                  onChange={(e) => setEditProfileName(e.target.value)}
+                  placeholder="Your player name"
+                  className="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 focus:border-amber-500 focus:ring-0 text-sm font-semibold text-slate-900"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
+                  Choose Avatar
+                </label>
+                <div className="grid grid-cols-6 gap-2">
+                  {QUIZ_AVATARS.map((av) => (
+                    <button
+                      key={av}
+                      type="button"
+                      onClick={() => setEditProfileAvatar(av)}
+                      className={`h-11 rounded-xl text-xl flex items-center justify-center border-2 transition active:scale-95 ${
+                        editProfileAvatar === av
+                          ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-400/30'
+                          : 'border-slate-200 bg-white hover:border-amber-300'
+                      }`}
+                    >
+                      {av}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingProfile(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!editProfileName.trim()}
+                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold text-xs shadow-sm transition"
+                >
+                  Save Profile
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Persistent Bottom Join Help Bar for Mobile */}
       <footer className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-xs border-t border-slate-200 p-2 sm:hidden flex items-center justify-between text-xs text-slate-500 px-4">

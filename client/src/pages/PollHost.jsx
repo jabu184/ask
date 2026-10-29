@@ -5,6 +5,7 @@ import { pollApi } from '../services/api';
 import WordCloud from '../components/WordCloud';
 import LiveBarChart from '../components/LiveBarChart';
 import LiveRatingChart from '../components/LiveRatingChart';
+import LiveRankingChart from '../components/LiveRankingChart';
 import SEO from '../components/SEO';
 import {
   ArrowLeft,
@@ -39,7 +40,8 @@ import {
   Download,
   HelpCircle,
   Radio,
-  Trophy
+  Trophy,
+  ListOrdered
 } from 'lucide-react';
 
 export default function PollHost() {
@@ -64,6 +66,9 @@ export default function PollHost() {
   const [qaFilter, setQaFilter] = useState('all'); // 'all' | 'pending' | 'answered'
   const [showQrModal, setShowQrModal] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
+  const [purgingData, setPurgingData] = useState(false);
+  const [pollStats, setPollStats] = useState(null);
 
   // Initialize Socket and initial data
   useEffect(() => {
@@ -75,6 +80,7 @@ export default function PollHost() {
         const data = await pollApi.get(id);
         setPoll(data.poll);
         setQuestions(data.questions || []);
+        if (data.stats) setPollStats(data.stats);
         if (typeof data.poll.show_correct_answer !== 'undefined') {
           setShowCorrectAnswer(Boolean(data.poll.show_correct_answer));
         }
@@ -161,6 +167,16 @@ export default function PollHost() {
 
         socket.on('poll:participant_count', (data) => {
           setParticipantCount(data.count || 0);
+        });
+
+        socket.on('poll:data_purged', () => {
+          setLiveResults(null);
+          setQaQuestions([]);
+          setLeaderboard([]);
+          setShowCorrectAnswer(false);
+          setShowLeaderboard(false);
+          setQuestions((prev) => prev.map((q) => ({ ...q, results: null })));
+          setPollStats((prev) => prev ? { ...prev, totalVotes: 0, uniqueParticipants: 0, uniqueVoters: 0, pollEngagementPct: 0, qaEngagementPct: 0, qaCount: 0 } : null);
         });
 
         // Remote Q&A display sync
@@ -289,6 +305,26 @@ export default function PollHost() {
       pollId: id,
       show_correct: nextVal
     });
+  };
+
+  const handlePurgeData = async () => {
+    if (purgingData || !poll) return;
+    setPurgingData(true);
+    try {
+      await pollApi.purgeData(poll.id);
+      setLiveResults(null);
+      setQaQuestions([]);
+      setLeaderboard([]);
+      setShowCorrectAnswer(false);
+      setShowLeaderboard(false);
+      setQuestions((prev) => prev.map((q) => ({ ...q, results: null })));
+      setPollStats((prev) => prev ? { ...prev, totalVotes: 0, uniqueParticipants: 0, uniqueVoters: 0, pollEngagementPct: 0, qaEngagementPct: 0, qaCount: 0 } : null);
+      setShowPurgeModal(false);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to purge poll data');
+    } finally {
+      setPurgingData(false);
+    }
   };
 
   const handleToggleLeaderboard = () => {
@@ -467,6 +503,17 @@ export default function PollHost() {
               </button>
             )}
 
+            {/* Purge Data */}
+            <button
+              type="button"
+              onClick={() => setShowPurgeModal(true)}
+              className="px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-rose-50 hover:border-rose-300 text-slate-600 hover:text-rose-600 shadow-sm transition flex items-center space-x-1.5 text-xs font-semibold cursor-pointer"
+              title="Purge all responses, quiz players, and Q&A from this poll"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+              <span className="hidden sm:inline">Purge Data</span>
+            </button>
+
             {/* Edit Poll */}
             <Link
               to={`/polls/${poll.id}/edit`}
@@ -576,6 +623,9 @@ export default function PollHost() {
                 let TypeIcon = BarChart3;
                 if (q.question_type === 'word_cloud') TypeIcon = Cloud;
                 if (q.question_type === 'rating') TypeIcon = Star;
+                if (q.question_type === 'ranking') TypeIcon = ListOrdered;
+
+                const qVotes = isActive ? (liveResults?.totalVotes ?? q.results?.totalVotes ?? 0) : (q.results?.totalVotes || 0);
 
                 return (
                   <button
@@ -605,9 +655,13 @@ export default function PollHost() {
                           <TypeIcon className="w-3 h-3 text-brand-600" />
                           <span className="capitalize">{q.question_type.replace('_', ' ')}</span>
                         </span>
+                        <span>•</span>
+                        <span className="font-semibold text-slate-600">
+                          {qVotes} votes / {participantCount} participants
+                        </span>
                         {isActive && (
                           <span className="text-emerald-600 font-bold uppercase tracking-wider">
-                            • Live on Stage
+                            • Live
                           </span>
                         )}
                       </div>
@@ -778,7 +832,12 @@ export default function PollHost() {
                       <span>Live Incoming Answers</span>
                     </span>
                     <span className="text-xs font-semibold text-slate-700">
-                      {liveResults?.totalVotes || 0} votes recorded
+                      {liveResults?.totalVotes || 0} votes recorded / {participantCount} active {participantCount === 1 ? 'participant' : 'participants'}
+                      {participantCount > 0 && (
+                        <span className="ml-1 text-slate-400 font-normal">
+                          ({Math.round(((liveResults?.totalVotes || 0) / participantCount) * 100)}% turnout)
+                        </span>
+                      )}
                     </span>
                   </div>
 
@@ -807,6 +866,14 @@ export default function PollHost() {
                       maxRating={liveResults?.maxRating || 5}
                       totalVotes={liveResults?.totalVotes || 0}
                       counts={liveResults?.counts || {}}
+                    />
+                  )}
+
+                  {/* Ranking Chart */}
+                  {currentQuestion.question_type === 'ranking' && (
+                    <LiveRankingChart
+                      rankingData={liveResults}
+                      totalVotes={liveResults?.totalVotes || 0}
                     />
                   )}
 
@@ -1051,24 +1118,42 @@ export default function PollHost() {
       {/* TAB 3: Summary Analytics & Export */}
       {activeTab === 'analytics' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Votes</div>
-              <div className="text-3xl font-extrabold text-slate-900">
+              <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">
                 {questions.reduce((sum, q) => sum + (q.results?.totalVotes || 0), 0)}
               </div>
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Active Voters</div>
-              <div className="text-3xl font-extrabold text-emerald-600">{participantCount}</div>
+              <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600">{participantCount}</div>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Poll Turnout</div>
+              <div className="text-2xl sm:text-3xl font-extrabold text-indigo-600">
+                {pollStats?.pollEngagementPct ?? 0}%
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                {pollStats?.uniqueVoters || 0} of {pollStats?.totalAudience || 0} attended
+              </div>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Q&A Engagement</div>
+              <div className="text-2xl sm:text-3xl font-extrabold text-violet-600">
+                {pollStats?.qaEngagementPct ?? 0}%
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                {pollStats?.uniqueQaParticipants || 0} asked/upvoted
+              </div>
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Questions</div>
-              <div className="text-3xl font-extrabold text-slate-900">{questions.length}</div>
+              <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">{questions.length}</div>
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Q&A Questions</div>
-              <div className="text-3xl font-extrabold text-indigo-600">{qaQuestions.length}</div>
+              <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">{qaQuestions.length}</div>
             </div>
           </div>
 
@@ -1119,6 +1204,27 @@ export default function PollHost() {
             </div>
           )}
 
+          {/* Danger Zone: Purge Data */}
+          <div className="bg-rose-50/50 border border-rose-200 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center space-x-2 text-rose-800 font-bold text-sm mb-1">
+                <Trash2 className="w-4 h-4 text-rose-600" />
+                <span>Purge Poll Response Data</span>
+              </div>
+              <p className="text-xs text-rose-700/80 max-w-xl">
+                Reset this poll back to zero responses. Permanently deletes all participant votes, scores, quiz players, and audience Q&A questions while keeping the poll questions and code intact.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPurgeModal(true)}
+              className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs shadow-xs transition flex items-center justify-center space-x-2 shrink-0 cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Purge All Data</span>
+            </button>
+          </div>
+
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center justify-between">
             <div>
               <h3 className="text-base font-bold text-slate-900">Export All Poll Responses</h3>
@@ -1134,6 +1240,47 @@ export default function PollHost() {
               <Download className="w-4 h-4" />
               <span>Download CSV</span>
             </a>
+          </div>
+        </div>
+      )}
+
+      {/* Purge Data Confirmation Modal */}
+      {showPurgeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-xl border border-slate-200 space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center space-x-3 text-rose-600">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-lg leading-tight">Purge All Poll Data?</h3>
+                <p className="text-xs text-slate-500">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+              This will permanently delete all <strong>participant responses</strong>, <strong>quiz players & scores</strong>, and <strong>audience Q&A questions</strong>. Your questions and poll PIN will be preserved so you can reuse this poll for a new session.
+            </p>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                disabled={purgingData}
+                onClick={() => setShowPurgeModal(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={purgingData}
+                onClick={handlePurgeData}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs shadow-sm transition flex items-center space-x-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{purgingData ? 'Purging Data...' : 'Yes, Purge All Data'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

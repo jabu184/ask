@@ -113,15 +113,16 @@ router.post('/:id/vote', (req, res) => {
         }
       });
     } else {
-      // Single vote upsert
+      // Single vote or ranking array upsert
+      const valStr = typeof value === 'object' ? JSON.stringify(value) : String(value).trim();
       const existing = db.prepare('SELECT id FROM poll_votes WHERE question_id = ? AND participant_id = ?').get(questionId, participantId);
       if (existing) {
-        db.prepare('UPDATE poll_votes SET value = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?').run(String(value).trim(), existing.id);
+        db.prepare('UPDATE poll_votes SET value = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?').run(valStr, existing.id);
       } else {
         db.prepare(`
           INSERT INTO poll_votes (id, poll_id, question_id, participant_id, value)
           VALUES (?, ?, ?, ?, ?)
-        `).run(generateId(), pollId, questionId, participantId, String(value).trim());
+        `).run(generateId(), pollId, questionId, participantId, valStr);
       }
     }
 

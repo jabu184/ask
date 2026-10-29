@@ -137,8 +137,8 @@ router.post('/', (req, res) => {
         if (idx === 0) firstQuestionId = qId;
 
         let optionsJson = null;
-        if (q.question_type === 'multiple_choice') {
-          optionsJson = JSON.stringify(q.options || ['Option 1', 'Option 2']);
+        if (q.question_type === 'multiple_choice' || q.question_type === 'ranking') {
+          optionsJson = JSON.stringify(q.options || ['Option 1', 'Option 2', 'Option 3']);
         } else if (q.question_type === 'rating') {
           optionsJson = JSON.stringify({ max: q.maxRating || 5 });
         } else if (q.question_type === 'word_cloud') {
@@ -208,6 +208,40 @@ router.get('/:id', (req, res) => {
     const totalParticipants = db.prepare('SELECT COUNT(DISTINCT participant_id) as count FROM poll_votes WHERE poll_id = ?').get(poll.id).count;
     const qaQuestions = db.prepare('SELECT * FROM poll_qa_questions WHERE poll_id = ? ORDER BY is_highlighted DESC, upvotes DESC, created_at DESC').all(poll.id);
 
+    // Compute audience engagement stats
+    const totalAudienceRows = db.prepare(`
+      SELECT participant_id FROM poll_votes WHERE poll_id = ?
+      UNION
+      SELECT participant_id FROM poll_qa_questions WHERE poll_id = ?
+      UNION
+      SELECT participant_id FROM poll_qa_upvotes WHERE qa_question_id IN (SELECT id FROM poll_qa_questions WHERE poll_id = ?)
+      UNION
+      SELECT participant_id FROM poll_participants WHERE poll_id = ?
+    `).all(poll.id, poll.id, poll.id, poll.id);
+    const totalAudience = totalAudienceRows.length;
+    const uniqueVoters = totalParticipants;
+    const uniqueQaParticipants = db.prepare(`
+      SELECT COUNT(DISTINCT participant_id) as count FROM (
+        SELECT participant_id FROM poll_qa_questions WHERE poll_id = ?
+        UNION
+        SELECT participant_id FROM poll_qa_upvotes WHERE qa_question_id IN (SELECT id FROM poll_qa_questions WHERE poll_id = ?)
+      )
+    `).get(poll.id, poll.id).count;
+    const pollEngagementPct = totalAudience > 0 ? Math.round((uniqueVoters / totalAudience) * 100) : 0;
+    const qaEngagementPct = totalAudience > 0 ? Math.round((uniqueQaParticipants / totalAudience) * 100) : 0;
+
+    const stats = {
+      totalVotes,
+      uniqueParticipants: totalParticipants,
+      totalAudience,
+      uniqueVoters,
+      uniqueQaParticipants,
+      pollEngagementPct,
+      qaEngagementPct,
+      questionCount: questions.length,
+      qaCount: qaQuestions.length
+    };
+
     res.json({
       poll: {
         ...poll,
@@ -222,6 +256,12 @@ router.get('/:id', (req, res) => {
       questions: questionsWithResults,
       totalVotes,
       totalParticipants,
+      totalAudience,
+      uniqueVoters,
+      uniqueQaParticipants,
+      pollEngagementPct,
+      qaEngagementPct,
+      stats,
       qaQuestions
     });
   } catch (err) {
@@ -313,8 +353,8 @@ router.put('/:id', (req, res) => {
 
         questions.forEach((q, idx) => {
           let optionsJson = null;
-          if (q.question_type === 'multiple_choice') {
-            optionsJson = JSON.stringify(q.options || ['Option 1', 'Option 2']);
+          if (q.question_type === 'multiple_choice' || q.question_type === 'ranking') {
+            optionsJson = JSON.stringify(q.options || ['Option 1', 'Option 2', 'Option 3']);
           } else if (q.question_type === 'rating') {
             optionsJson = JSON.stringify({ max: q.maxRating || 5 });
           } else if (q.question_type === 'word_cloud') {
@@ -369,6 +409,63 @@ router.delete('/:id', (req, res) => {
   } catch (err) {
     console.error('[Poll Delete Error]', err);
     res.status(500).json({ error: 'Failed to delete poll' });
+  }
+});
+
+/**
+ * POST /api/polls/:id/purge
+ * Purge all responses, votes, quiz players, scores, and Q&A from a poll
+ */
+router.post('/:id/purge', (req, res) => {
+  try {
+    const poll = getAuthorizedPoll(req.params.id, req);
+    if (!poll) return res.status(404).json({ error: 'Poll not found' });
+    if (poll === 'UNAUTHORIZED') return res.status(403).json({ error: 'Unauthorized' });
+
+    const purgeTx = db.transaction(() => {
+      // 1. Delete all votes
+      db.prepare('DELETE FROM poll_votes WHERE poll_id = ?').run(poll.id);
+
+      // 2. Delete all Q&A upvotes
+      db.prepare(`
+        DELETE FROM poll_qa_upvotes 
+        WHERE qa_question_id IN (SELECT id FROM poll_qa_questions WHERE poll_id = ?)
+      `).run(poll.id);
+
+      // 3. Delete all Q&A questions
+      db.prepare('DELETE FROM poll_qa_questions WHERE poll_id = ?').run(poll.id);
+
+      // 4. Delete all quiz participants
+      db.prepare('DELETE FROM poll_participants WHERE poll_id = ?').run(poll.id);
+
+      // 5. Reset poll flags
+      db.prepare(`
+        UPDATE polls SET
+          show_correct_answer = 0,
+          show_leaderboard = 0,
+          closed_at = NULL
+        WHERE id = ?
+      `).run(poll.id);
+    });
+
+    purgeTx();
+
+    // Broadcast reset to all clients in the poll room
+    const io = getIO();
+    if (io) {
+      io.to(`poll:${poll.id}`).emit('poll:data_purged', {
+        pollId: poll.id,
+        message: 'All poll responses, quiz players, and Q&A have been purged'
+      });
+      io.to(`poll:${poll.id}`).emit('poll:leaderboard_update', { leaderboard: [] });
+      io.to(`poll:${poll.id}`).emit('poll:results_update', { results: null, totalVotes: 0 });
+      io.to(`poll:${poll.id}`).emit('qa:list', []);
+    }
+
+    res.json({ message: 'All responses, quiz players, and Q&A have been purged successfully.' });
+  } catch (err) {
+    console.error('[Poll Purge Error]', err);
+    res.status(500).json({ error: 'Failed to purge poll data' });
   }
 });
 
@@ -608,9 +705,36 @@ router.get('/:id/analytics', (req, res) => {
     const totalParticipants = db.prepare('SELECT COUNT(DISTINCT participant_id) as count FROM poll_votes WHERE poll_id = ?').get(poll.id).count;
     const qaQuestions = db.prepare('SELECT * FROM poll_qa_questions WHERE poll_id = ? ORDER BY is_highlighted DESC, upvotes DESC, created_at DESC').all(poll.id);
 
+    // Compute audience engagement stats
+    const totalAudienceRows = db.prepare(`
+      SELECT participant_id FROM poll_votes WHERE poll_id = ?
+      UNION
+      SELECT participant_id FROM poll_qa_questions WHERE poll_id = ?
+      UNION
+      SELECT participant_id FROM poll_qa_upvotes WHERE qa_question_id IN (SELECT id FROM poll_qa_questions WHERE poll_id = ?)
+      UNION
+      SELECT participant_id FROM poll_participants WHERE poll_id = ?
+    `).all(poll.id, poll.id, poll.id, poll.id);
+    const totalAudience = totalAudienceRows.length;
+    const uniqueVoters = totalParticipants;
+    const uniqueQaParticipants = db.prepare(`
+      SELECT COUNT(DISTINCT participant_id) as count FROM (
+        SELECT participant_id FROM poll_qa_questions WHERE poll_id = ?
+        UNION
+        SELECT participant_id FROM poll_qa_upvotes WHERE qa_question_id IN (SELECT id FROM poll_qa_questions WHERE poll_id = ?)
+      )
+    `).get(poll.id, poll.id).count;
+    const pollEngagementPct = totalAudience > 0 ? Math.round((uniqueVoters / totalAudience) * 100) : 0;
+    const qaEngagementPct = totalAudience > 0 ? Math.round((uniqueQaParticipants / totalAudience) * 100) : 0;
+
     const stats = {
       totalVotes,
       uniqueParticipants: totalParticipants,
+      totalAudience,
+      uniqueVoters,
+      uniqueQaParticipants,
+      pollEngagementPct,
+      qaEngagementPct,
       questionCount: questions.length,
       qaCount: qaQuestions.length
     };
@@ -622,6 +746,11 @@ router.get('/:id/analytics', (req, res) => {
       stats,
       totalVotes,
       totalParticipants,
+      totalAudience,
+      uniqueVoters,
+      uniqueQaParticipants,
+      pollEngagementPct,
+      qaEngagementPct,
       questions: questionsAnalytics,
       qaQuestions,
       leaderboard
@@ -668,6 +797,17 @@ router.get('/:id/export', (req, res) => {
         ORDER BY q.order_num ASC, v.created_at ASC
       `).all(poll.id);
 
+      votes.forEach(v => {
+        if (v.question_type === 'ranking') {
+          try {
+            const arr = typeof v.response_value === 'string' && (v.response_value.startsWith('[') || v.response_value.startsWith('{')) ? JSON.parse(v.response_value) : null;
+            if (Array.isArray(arr)) {
+              v.response_value = arr.map((item, idx) => `${idx + 1}. ${item}`).join(' > ');
+            }
+          } catch (e) {}
+        }
+      });
+
       const fields = [
         'vote_id',
         'participant_name',
@@ -698,6 +838,17 @@ router.get('/:id/export', (req, res) => {
         WHERE v.poll_id = ?
         ORDER BY q.order_num ASC, v.created_at ASC
       `).all(poll.id);
+
+      votes.forEach(v => {
+        if (v.question_type === 'ranking') {
+          try {
+            const arr = typeof v.response_value === 'string' && (v.response_value.startsWith('[') || v.response_value.startsWith('{')) ? JSON.parse(v.response_value) : null;
+            if (Array.isArray(arr)) {
+              v.response_value = arr.map((item, idx) => `${idx + 1}. ${item}`).join(' > ');
+            }
+          } catch (e) {}
+        }
+      });
 
       const fields = ['vote_id', 'question_number', 'question_text', 'question_type', 'response_value', 'participant_id', 'voted_at'];
       const json2csvParser = new Parser({ fields });

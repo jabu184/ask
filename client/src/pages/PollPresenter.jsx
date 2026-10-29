@@ -6,6 +6,7 @@ import { publicPollApi } from '../services/api';
 import WordCloud from '../components/WordCloud';
 import LiveBarChart from '../components/LiveBarChart';
 import LiveRatingChart from '../components/LiveRatingChart';
+import LiveRankingChart from '../components/LiveRankingChart';
 import SEO from '../components/SEO';
 import {
   Maximize2,
@@ -173,6 +174,14 @@ export default function PollPresenter() {
 
         socket.on('poll:participant_count', (payload) => {
           setParticipantCount(payload.count || 0);
+        });
+
+        socket.on('poll:data_purged', () => {
+          setLiveResults(null);
+          setQaQuestions([]);
+          setLeaderboard([]);
+          setShowCorrectAnswer(false);
+          setShowLeaderboard(false);
         });
 
         // Remote Q&A sidebar toggle from host
@@ -599,6 +608,15 @@ export default function PollPresenter() {
                           maxRating={liveResults?.maxRating || 5}
                           totalVotes={liveResults?.totalVotes || 0}
                           counts={liveResults?.counts || {}}
+                          isPresenter={true}
+                        />
+                      )}
+
+                      {/* Ranking Chart */}
+                      {currentQuestion.question_type === 'ranking' && (
+                        <LiveRankingChart
+                          rankingData={liveResults}
+                          totalVotes={liveResults?.totalVotes || 0}
                           isPresenter={true}
                         />
                       )}
