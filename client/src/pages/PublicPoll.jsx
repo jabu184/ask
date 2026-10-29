@@ -98,6 +98,7 @@ export default function PublicPoll() {
   const [qaNotice, setQaNotice] = useState('');
 
   const socketRef = useRef(null);
+  const savedVotesRef = useRef({});
 
   // Initial lookup & Socket connection
   useEffect(() => {
@@ -121,6 +122,13 @@ export default function PublicPoll() {
         setHasVoted(initial.hasVoted);
         setUserVote(initial.userVote);
         setMyWords(initial.userVotes || []);
+        if (initial.currentQuestion && initial.hasVoted) {
+          savedVotesRef.current[initial.currentQuestion.id] = {
+            hasVoted: initial.hasVoted,
+            userVote: initial.userVote,
+            myWords: initial.userVotes || []
+          };
+        }
         setShowCorrectAnswer(Boolean(initial.poll?.show_correct_answer || initial.currentQuestion?.show_correct_answer));
         setCorrectAnswer(initial.currentQuestion?.correct_answer || null);
         setIsQuizMode(Boolean(initial.poll?.is_quiz_mode));
@@ -175,6 +183,13 @@ export default function PublicPoll() {
           setHasVoted(state.hasVoted);
           setUserVote(state.userVote);
           if (state.userVotes) setMyWords(state.userVotes);
+          if (state.currentQuestion && state.hasVoted) {
+            savedVotesRef.current[state.currentQuestion.id] = {
+              hasVoted: state.hasVoted,
+              userVote: state.userVote,
+              myWords: state.userVotes || []
+            };
+          }
           if (state.poll && typeof state.poll.show_correct_answer !== 'undefined') {
             setShowCorrectAnswer(Boolean(state.poll.show_correct_answer));
           }
@@ -202,16 +217,91 @@ export default function PublicPoll() {
         });
 
         socket.on('poll:question_changed', (data) => {
+          const qId = data.currentQuestion?.id;
           setCurrentQuestion(data.currentQuestion);
           setVotingOpen(data.voting_open);
           setLiveResults(data.liveResults);
-          setHasVoted(false);
-          setUserVote(null);
-          setMyWords([]);
           setShowResults(typeof data.show_results !== 'undefined' ? Boolean(data.show_results) : true);
           setShowCorrectAnswer(Boolean(data.show_correct_answer));
           setCorrectAnswer(data.currentQuestion?.correct_answer || null);
           setTextInput('');
+
+          // 1. Immediately check local saved response cache so there is no flicker
+          const localSaved = qId ? savedVotesRef.current[qId] : null;
+          if (localSaved && localSaved.hasVoted) {
+            setHasVoted(true);
+            setUserVote(localSaved.userVote);
+            setMyWords(localSaved.myWords || []);
+          } else {
+            setHasVoted(false);
+            setUserVote(null);
+            setMyWords([]);
+          }
+
+          // 2. Fetch recorded vote from server for this participant and question
+          if (qId && participantId) {
+            const pId = initial.poll?.id;
+            socket.emit('poll:get_user_vote', {
+              pollId: pId,
+              questionId: qId,
+              participantId
+            }, (res) => {
+              if (res && res.questionId === qId) {
+                setHasVoted(Boolean(res.hasVoted));
+                setUserVote(res.userVote || null);
+                setMyWords(res.userVotes || []);
+                if (res.hasVoted) {
+                  savedVotesRef.current[qId] = {
+                    hasVoted: true,
+                    userVote: res.userVote,
+                    myWords: res.userVotes || []
+                  };
+                }
+              }
+            });
+
+            publicPollApi.getUserVote(pId, qId, participantId)
+              .then((res) => {
+                if (res && res.questionId === qId) {
+                  setHasVoted(Boolean(res.hasVoted));
+                  setUserVote(res.userVote || null);
+                  setMyWords(res.userVotes || []);
+                  if (res.hasVoted) {
+                    savedVotesRef.current[qId] = {
+                      hasVoted: true,
+                      userVote: res.userVote,
+                      myWords: res.userVotes || []
+                    };
+                  }
+                }
+              })
+              .catch(() => {});
+          }
+        });
+
+        socket.on('poll:user_vote_response', (res) => {
+          if (res && res.questionId) {
+            if (res.hasVoted) {
+              savedVotesRef.current[res.questionId] = {
+                hasVoted: true,
+                userVote: res.userVote,
+                myWords: res.userVotes || []
+              };
+            }
+            setCurrentQuestion((cur) => {
+              if (cur && cur.id === res.questionId) {
+                setHasVoted(Boolean(res.hasVoted));
+                setUserVote(res.userVote || null);
+                setMyWords(res.userVotes || []);
+              }
+              return cur;
+            });
+          }
+        });
+
+        socket.on('poll:question_marked_toggled', ({ questionId, answer_revealed, leaderboard: lb }) => {
+          setCurrentQuestion((prev) => (prev && prev.id === questionId ? { ...prev, answer_revealed: Boolean(answer_revealed) } : prev));
+          if (lb) setLeaderboard(lb);
         });
 
         socket.on('poll:voting_toggled', (data) => {
@@ -233,10 +323,14 @@ export default function PublicPoll() {
 
         socket.on('poll:user_words_updated', ({ words }) => {
           setMyWords(words || []);
-          if (words && words.length > 0) {
-            setHasVoted(true);
-          } else {
-            setHasVoted(false);
+          const voted = words && words.length > 0;
+          setHasVoted(Boolean(voted));
+          if (currentQuestion) {
+            savedVotesRef.current[currentQuestion.id] = {
+              hasVoted: Boolean(voted),
+              userVote: null,
+              myWords: words || []
+            };
           }
           setSubmittingVote(false);
         });
@@ -252,6 +346,7 @@ export default function PublicPoll() {
         });
 
         socket.on('poll:data_purged', () => {
+          savedVotesRef.current = {};
           setLiveResults(null);
           setQaQuestions([]);
           setLeaderboard([]);
@@ -282,6 +377,14 @@ export default function PublicPoll() {
           setHasVoted(true);
           setUserVote(data.value);
           setSubmittingVote(false);
+          const qId = data.questionId || currentQuestion?.id;
+          if (qId) {
+            savedVotesRef.current[qId] = {
+              hasVoted: true,
+              userVote: data.value,
+              myWords: myWords
+            };
+          }
         });
 
         socket.on('poll:quiz_profile_confirmed', (profile) => {
@@ -394,6 +497,15 @@ export default function PublicPoll() {
   const handleVote = (val) => {
     if (!poll || !currentQuestion || !votingOpen || submittingVote || isLockedByHost) return;
     setSubmittingVote(true);
+    setHasVoted(true);
+    setUserVote(val);
+    if (currentQuestion) {
+      savedVotesRef.current[currentQuestion.id] = {
+        hasVoted: true,
+        userVote: val,
+        myWords: currentQuestion.question_type === 'word_cloud' ? myWords : []
+      };
+    }
 
     if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit('poll:submit_vote', {

@@ -223,6 +223,10 @@ export const pollApi = {
     const res = await api.post(`/polls/${id}/purge`);
     return res.data;
   },
+  toggleMark: async (id, questionId, marked) => {
+    const res = await api.post(`/polls/${id}/toggle-mark`, { questionId, marked });
+    return res.data;
+  },
   getCsvExportUrl: (id) => `/api/polls/${id}/export`,
 };
 
@@ -236,6 +240,12 @@ export const publicPollApi = {
   get: async (id, participantId) => {
     const res = await api.get(`/public/polls/${id}`, {
       params: { participantId }
+    });
+    return res.data;
+  },
+  getUserVote: async (id, questionId, participantId) => {
+    const res = await api.get(`/public/polls/${id}/vote`, {
+      params: { questionId, participantId }
     });
     return res.data;
   },

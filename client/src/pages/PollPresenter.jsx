@@ -196,6 +196,11 @@ export default function PollPresenter() {
           setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: false, show_correct_answer: 0 } : prev));
         });
 
+        socket.on('poll:question_marked_toggled', ({ questionId, answer_revealed, leaderboard: lb }) => {
+          setCurrentQuestion((prev) => (prev && prev.id === questionId ? { ...prev, answer_revealed: Boolean(answer_revealed) } : prev));
+          if (lb) setLeaderboard(lb);
+        });
+
         socket.on('poll:status_changed', ({ status }) => {
           setPoll((prev) => (prev ? { ...prev, status } : prev));
         });

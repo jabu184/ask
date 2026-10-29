@@ -597,6 +597,43 @@ function initPollSocket(httpServer) {
       }
     });
 
+    socket.on('poll:get_user_vote', ({ pollId, questionId, participantId }, callback) => {
+      try {
+        if (!pollId || !questionId || !participantId) {
+          if (typeof callback === 'function') callback(null);
+          return;
+        }
+        const votes = db.prepare('SELECT id, value, created_at FROM poll_votes WHERE question_id = ? AND participant_id = ? ORDER BY created_at ASC').all(questionId, participantId);
+        let userVote = null;
+        const hasVoted = votes.length > 0;
+        if (hasVoted) {
+          userVote = votes[votes.length - 1].value;
+          const q = db.prepare('SELECT question_type FROM poll_questions WHERE id = ?').get(questionId);
+          if (q && q.question_type === 'ranking') {
+            try {
+              if (typeof userVote === 'string' && (userVote.startsWith('[') || userVote.startsWith('{'))) {
+                userVote = JSON.parse(userVote);
+              }
+            } catch (e) {}
+          }
+        }
+        const payload = {
+          questionId,
+          hasVoted,
+          userVote,
+          userVotes: votes
+        };
+        if (typeof callback === 'function') {
+          callback(payload);
+        } else {
+          socket.emit('poll:user_vote_response', payload);
+        }
+      } catch (err) {
+        console.error('[Socket Get User Vote Error]', err);
+        if (typeof callback === 'function') callback(null);
+      }
+    });
+
     socket.on('poll:host_toggle_voting', ({ pollId, voting_open }) => {
       try {
         const val = voting_open ? 1 : 0;
@@ -695,6 +732,34 @@ function initPollSocket(httpServer) {
         }
       } catch (err) {
         console.error('[Socket Host Toggle Correct Answer Error]', err);
+      }
+    });
+
+    socket.on('poll:host_toggle_mark_question', ({ pollId, questionId, marked }) => {
+      try {
+        const q = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(questionId);
+        if (!q) return;
+
+        const currentVal = q.answer_revealed === 1 ? 1 : 0;
+        const nextVal = typeof marked === 'boolean' ? (marked ? 1 : 0) : (currentVal === 1 ? 0 : 1);
+
+        db.prepare('UPDATE poll_questions SET answer_revealed = ? WHERE id = ?').run(nextVal, questionId);
+
+        const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
+        let leaderboard = [];
+        if (poll && poll.is_quiz_mode === 1) {
+          leaderboard = computePollLeaderboard(pollId);
+          io.to(`poll:${pollId}`).emit('poll:leaderboard_update', { leaderboard });
+        }
+
+        io.to(`poll:${pollId}`).emit('poll:question_marked_toggled', {
+          questionId,
+          answer_revealed: Boolean(nextVal),
+          is_marked: nextVal === 1,
+          leaderboard
+        });
+      } catch (err) {
+        console.error('[Socket Host Toggle Mark Question Error]', err);
       }
     });
 

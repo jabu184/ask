@@ -128,10 +128,29 @@ export default function PollHost() {
         });
 
         socket.on('poll:question_changed', (data) => {
-          setCurrentQuestion(data.currentQuestion);
-          setShowCorrectAnswer(false);
+          setQuestions((prevQuestions) => {
+            const fullQ = prevQuestions.find((q) => q.id === data.currentQuestion.id);
+            const merged = fullQ
+              ? { ...fullQ, ...data.currentQuestion, correct_answer: fullQ.correct_answer || data.currentQuestion.correct_answer }
+              : data.currentQuestion;
+            setCurrentQuestion(merged);
+            return prevQuestions;
+          });
+          setShowCorrectAnswer(Boolean(data.show_correct_answer));
           if (data.liveResults) setLiveResults(data.liveResults);
           setPoll((prev) => (prev ? { ...prev, current_question_id: data.currentQuestion.id, voting_open: true } : prev));
+        });
+
+        socket.on('poll:question_marked_toggled', ({ questionId, answer_revealed, leaderboard: lb }) => {
+          setQuestions((prev) =>
+            prev.map((q) => (q.id === questionId ? { ...q, answer_revealed: answer_revealed ? 1 : 0 } : q))
+          );
+          setCurrentQuestion((prev) =>
+            prev && prev.id === questionId
+              ? { ...prev, answer_revealed: answer_revealed ? 1 : 0 }
+              : prev
+          );
+          if (lb) setLeaderboard(lb);
         });
 
         socket.on('poll:voting_toggled', (data) => {
@@ -319,11 +338,34 @@ export default function PollHost() {
 
   const handleSelectQuestion = (qId) => {
     if (!qId || qId === currentQuestion?.id) return;
-    if (currentQuestion && currentQuestion.correct_answer && !currentQuestion.answer_revealed) {
+    const activeQ = questions.find((q) => q.id === currentQuestion?.id) || currentQuestion;
+    const hasCorrect = Boolean(activeQ?.correct_answer && String(activeQ.correct_answer).trim());
+    const isUnmarked = hasCorrect && activeQ?.answer_revealed !== 1 && activeQ?.answer_revealed !== true;
+    if (isUnmarked) {
       setMarkPromptTargetQId(qId);
     } else {
       executeQuestionChange(qId, null);
     }
+  };
+
+  const handleToggleQuestionMark = (qId, explicitMarked = null) => {
+    if (!poll || !socketRef.current) return;
+    const targetQ = questions.find((q) => q.id === qId) || (currentQuestion?.id === qId ? currentQuestion : null);
+    const currentMarked = targetQ ? (targetQ.answer_revealed === 1 || targetQ.answer_revealed === true) : false;
+    const nextMarked = explicitMarked !== null ? explicitMarked : !currentMarked;
+
+    setQuestions((prev) =>
+      prev.map((q) => (q.id === qId ? { ...q, answer_revealed: nextMarked ? 1 : 0 } : q))
+    );
+    if (currentQuestion && currentQuestion.id === qId) {
+      setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: nextMarked ? 1 : 0 } : prev));
+    }
+
+    socketRef.current.emit('poll:host_toggle_mark_question', {
+      pollId: id,
+      questionId: qId,
+      marked: nextMarked
+    });
   };
 
   const handlePrevQuestion = () => {
@@ -830,19 +872,28 @@ export default function PollHost() {
                           )}
                         </button>
 
-                        {/* 2. Marked / Unmarked Indicator */}
+                        {/* 2. Marked / Unmarked Toggle */}
                         {Boolean(q.correct_answer) && (
-                          <span
-                            className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border flex items-center space-x-1 ${
-                              q.answer_revealed === 1
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200 font-bold'
-                                : 'bg-slate-100 text-slate-500 border-slate-200'
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleQuestionMark(q.id);
+                            }}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border flex items-center space-x-1 transition cursor-pointer ${
+                              q.answer_revealed === 1 || q.answer_revealed === true
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold hover:bg-emerald-200'
+                                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
                             }`}
-                            title={q.answer_revealed === 1 ? 'Responses locked & marked' : 'Responses not yet marked'}
+                            title={
+                              q.answer_revealed === 1 || q.answer_revealed === true
+                                ? 'Question is marked (responses locked and scored). Click to unmark.'
+                                : 'Question is unmarked. Click to mark.'
+                            }
                           >
-                            <Check className="w-3 h-3 text-emerald-600" />
-                            <span>{q.answer_revealed === 1 ? 'Marked' : 'Unmarked'}</span>
-                          </span>
+                            <Check className={`w-3 h-3 ${q.answer_revealed === 1 || q.answer_revealed === true ? 'text-emerald-700' : 'text-slate-400'}`} />
+                            <span>{q.answer_revealed === 1 || q.answer_revealed === true ? 'Marked' : 'Unmarked'}</span>
+                          </button>
                         )}
 
                         {/* 3. Correct Answer On Display Indicator & Toggle */}
@@ -946,16 +997,36 @@ export default function PollHost() {
                       )}
                     </button>
 
-                    {currentQuestion.question_type === 'multiple_choice' && currentQuestion.correct_answer && (
+                    {Boolean(currentQuestion.correct_answer || questions.find((q) => q.id === currentQuestion.id)?.correct_answer) && (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleQuestionMark(currentQuestion.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer ${
+                          currentQuestion.answer_revealed === 1 || currentQuestion.answer_revealed === true
+                            ? 'bg-emerald-600 text-white border border-emerald-700 shadow-sm hover:bg-emerald-700'
+                            : 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100'
+                        }`}
+                        title={
+                          currentQuestion.answer_revealed === 1 || currentQuestion.answer_revealed === true
+                            ? 'Question is marked (responses locked and scored). Click to unmark.'
+                            : 'Click to mark answers (locks submissions and tallies scores)'
+                        }
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>{currentQuestion.answer_revealed === 1 || currentQuestion.answer_revealed === true ? 'Marked' : 'Mark'}</span>
+                      </button>
+                    )}
+
+                    {currentQuestion.question_type === 'multiple_choice' && Boolean(currentQuestion.correct_answer || questions.find((q) => q.id === currentQuestion.id)?.correct_answer) && (
                       <button
                         type="button"
                         onClick={() => handleToggleQuestionCorrectAnswer(currentQuestion.id)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition ${
                           currentQuestion.show_correct_answer === 1 || showCorrectAnswer
-                            ? 'bg-emerald-600 text-white border border-emerald-700 shadow-sm hover:bg-emerald-700'
-                            : 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
+                            ? 'bg-purple-600 text-white border border-purple-700 shadow-sm hover:bg-purple-700'
+                            : 'bg-purple-50 text-purple-700 border border-purple-300 hover:bg-purple-100'
                         }`}
-                        title={currentQuestion.show_correct_answer === 1 || showCorrectAnswer ? 'Click to hide correct answer from audience' : `Click to reveal correct answer: ${currentQuestion.correct_answer}`}
+                        title={currentQuestion.show_correct_answer === 1 || showCorrectAnswer ? 'Click to hide correct answer from audience' : 'Click to reveal correct answer'}
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         <span>{currentQuestion.show_correct_answer === 1 || showCorrectAnswer ? 'Hide Correct Answer' : 'Reveal Correct Answer'}</span>
@@ -1511,7 +1582,7 @@ export default function PollHost() {
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
-              The current question has a correct answer designated (<strong>{currentQuestion?.correct_answer}</strong>).
+              The current question has a correct answer designated (<strong>{currentQuestion?.correct_answer || questions.find((q) => q.id === currentQuestion?.id)?.correct_answer}</strong>).
               Moving away can lock participant submissions so they can no longer be edited or changed.
             </p>
 

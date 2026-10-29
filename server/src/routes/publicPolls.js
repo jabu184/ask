@@ -53,6 +53,45 @@ router.get('/:id', (req, res) => {
 });
 
 /**
+ * GET /api/public/polls/:id/vote
+ * Retrieve participant vote for a specific question
+ */
+router.get('/:id/vote', (req, res) => {
+  try {
+    const pollId = req.params.id;
+    const { questionId, participantId } = req.query;
+    if (!questionId || !participantId) {
+      return res.status(400).json({ error: 'Missing questionId or participantId' });
+    }
+
+    const votes = db.prepare('SELECT id, value, created_at FROM poll_votes WHERE question_id = ? AND participant_id = ? ORDER BY created_at ASC').all(questionId, participantId);
+    let userVote = null;
+    const hasVoted = votes.length > 0;
+    if (hasVoted) {
+      userVote = votes[votes.length - 1].value;
+      const q = db.prepare('SELECT question_type FROM poll_questions WHERE id = ?').get(questionId);
+      if (q && q.question_type === 'ranking') {
+        try {
+          if (typeof userVote === 'string' && (userVote.startsWith('[') || userVote.startsWith('{'))) {
+            userVote = JSON.parse(userVote);
+          }
+        } catch (e) {}
+      }
+    }
+
+    res.json({
+      questionId,
+      hasVoted,
+      userVote,
+      userVotes: votes
+    });
+  } catch (err) {
+    console.error('[Public Poll Get User Vote Error]', err);
+    res.status(500).json({ error: 'Failed to retrieve user vote' });
+  }
+});
+
+/**
  * POST /api/public/polls/:id/vote
  * Submit vote (HTTP fallback for WebSocket)
  */

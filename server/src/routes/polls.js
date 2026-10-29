@@ -703,6 +703,50 @@ router.post('/:id/toggle-results', (req, res) => {
 });
 
 /**
+ * POST /api/polls/:id/toggle-mark
+ * Toggle or set marked (answer_revealed) status of a specific question
+ */
+router.post('/:id/toggle-mark', (req, res) => {
+  try {
+    const poll = getAuthorizedPoll(req.params.id, req);
+    if (!poll) return res.status(404).json({ error: 'Poll not found' });
+    if (poll === 'UNAUTHORIZED') return res.status(403).json({ error: 'Unauthorized' });
+
+    const { questionId, marked } = req.body;
+    const q = db.prepare('SELECT * FROM poll_questions WHERE id = ? AND poll_id = ?').get(questionId, poll.id);
+    if (!q) return res.status(404).json({ error: 'Question not found' });
+
+    const currentVal = q.answer_revealed === 1 ? 1 : 0;
+    const nextVal = typeof marked === 'boolean' ? (marked ? 1 : 0) : (currentVal === 1 ? 0 : 1);
+
+    db.prepare('UPDATE poll_questions SET answer_revealed = ? WHERE id = ?').run(nextVal, questionId);
+
+    let leaderboard = [];
+    if (poll.is_quiz_mode === 1) {
+      leaderboard = computePollLeaderboard(poll.id);
+    }
+
+    const io = getIO();
+    if (io) {
+      if (poll.is_quiz_mode === 1) {
+        io.to(`poll:${poll.id}`).emit('poll:leaderboard_update', { leaderboard });
+      }
+      io.to(`poll:${poll.id}`).emit('poll:question_marked_toggled', {
+        questionId,
+        answer_revealed: Boolean(nextVal),
+        is_marked: nextVal === 1,
+        leaderboard
+      });
+    }
+
+    res.json({ questionId, answer_revealed: nextVal, is_marked: nextVal === 1, leaderboard });
+  } catch (err) {
+    console.error('[Poll Toggle Mark Error]', err);
+    res.status(500).json({ error: 'Failed to toggle mark' });
+  }
+});
+
+/**
  * GET /api/polls/:id/analytics
  * Comprehensive analytics and saved results for review
  */
