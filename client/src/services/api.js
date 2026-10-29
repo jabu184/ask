@@ -164,6 +164,14 @@ export const adminApi = {
     const res = await api.delete(`/admin/surveys/${id}`);
     return res.data;
   },
+  getPolls: async (search = '', status = 'all') => {
+    const res = await api.get('/admin/polls', { params: { search, status } });
+    return res.data;
+  },
+  deletePoll: async (id) => {
+    const res = await api.delete(`/admin/polls/${id}`);
+    return res.data;
+  },
 };
 
 export const pollApi = {

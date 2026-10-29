@@ -52,14 +52,15 @@ ChartJS.register(
 );
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState('users'); // 'users' | 'surveys' | 'activity'
+  const [activeTab, setActiveTab] = useState('users'); // 'users' | 'surveys' | 'polls' | 'activity'
   const [stats, setStats] = useState(null);
   const [trends, setTrends] = useState(null);
-  const [trendModal, setTrendModal] = useState(null); // { type: 'users'|'surveys'|'responses'|'questions', viewMode: 'cumulative'|'daily' }
+  const [trendModal, setTrendModal] = useState(null); // { type: 'users'|'surveys'|'polls'|'responses'|'questions', viewMode: 'cumulative'|'daily' }
   const [recentUsers, setRecentUsers] = useState([]);
   const [recentResponses, setRecentResponses] = useState([]);
   const [users, setUsers] = useState([]);
   const [surveys, setSurveys] = useState([]);
+  const [polls, setPolls] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -69,6 +70,8 @@ export default function AdminDashboard() {
   const [userSearch, setUserSearch] = useState('');
   const [surveySearch, setSurveySearch] = useState('');
   const [surveyStatusFilter, setSurveyStatusFilter] = useState('all');
+  const [pollSearch, setPollSearch] = useState('');
+  const [pollStatusFilter, setPollStatusFilter] = useState('all');
 
   // Modal states
   const [viewingUser, setViewingUser] = useState(null); // for user details & surveys modal
@@ -123,6 +126,16 @@ export default function AdminDashboard() {
       icon: FileText,
       iconBg: 'bg-purple-50 text-purple-600',
       total: stats?.totalSurveys || 0
+    },
+    polls: {
+      title: 'Live Polls Created',
+      subtitle: 'Number of interactive polls created over time',
+      color: '#0284c7',
+      bgGradient: 'rgba(2, 132, 199, 0.12)',
+      unit: 'polls',
+      icon: Layers,
+      iconBg: 'bg-sky-50 text-sky-600',
+      total: stats?.totalPolls || 0
     },
     responses: {
       title: 'Survey Responses Trend',
@@ -280,11 +293,21 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchPolls = async () => {
+    try {
+      const data = await adminApi.getPolls(pollSearch, pollStatusFilter);
+      setPolls(data.polls || []);
+    } catch (err) {
+      console.error('Failed to load polls:', err);
+      setError(err.response?.data?.error || 'Failed to load polls');
+    }
+  };
+
   const loadAll = async () => {
     setLoading(true);
     setError('');
     try {
-      await Promise.all([fetchOverview(), fetchUsers(), fetchSurveys()]);
+      await Promise.all([fetchOverview(), fetchUsers(), fetchSurveys(), fetchPolls()]);
     } finally {
       setLoading(false);
     }
@@ -293,7 +316,7 @@ export default function AdminDashboard() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([fetchOverview(), fetchUsers(), fetchSurveys()]);
+      await Promise.all([fetchOverview(), fetchUsers(), fetchSurveys(), fetchPolls()]);
       showSuccess('Data refreshed successfully');
     } finally {
       setRefreshing(false);
@@ -319,6 +342,14 @@ export default function AdminDashboard() {
     }, 300);
     return () => clearTimeout(timer);
   }, [surveySearch, surveyStatusFilter]);
+
+  // Re-fetch polls when poll search or filter changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchPolls();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [pollSearch, pollStatusFilter]);
 
   const showSuccess = (msg) => {
     setSuccessMessage(msg);
@@ -454,6 +485,17 @@ export default function AdminDashboard() {
         }
         await Promise.all([fetchOverview(), fetchSurveys(), fetchUsers()]);
         showSuccess(`Survey "${deletingTarget.item.title}" deleted.`);
+      } else if (deletingTarget.type === 'poll') {
+        await adminApi.deletePoll(deletingTarget.item.id);
+        setDeletingTarget(null);
+        if (viewingUser) {
+          setViewingUser(prev => ({
+            ...prev,
+            surveys: prev.surveys.filter(s => s.id !== deletingTarget.item.id)
+          }));
+        }
+        await Promise.all([fetchOverview(), fetchPolls(), fetchUsers()]);
+        showSuccess(`Poll "${deletingTarget.item.title}" deleted.`);
       }
     } catch (err) {
       alert(err.response?.data?.error || 'Delete operation failed');
@@ -533,24 +575,24 @@ export default function AdminDashboard() {
 
       {/* KPI Stat Cards */}
       {stats && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
           {/* Card 1: Total Users */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow transition">
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow transition">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Registered Creators</span>
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Creators</span>
               <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
                 <Users className="w-5 h-5" />
               </div>
             </div>
             <div className="flex items-baseline justify-between mt-3">
-              <p className="text-3xl font-bold text-slate-900">{stats.totalUsers}</p>
+              <p className="text-2xl sm:text-3xl font-bold text-slate-900">{stats.totalUsers}</p>
               <button
                 onClick={() => openTrendModal('users')}
-                className="inline-flex items-center space-x-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200/60 px-2.5 py-1 rounded-lg transition"
+                className="inline-flex items-center space-x-1 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200/60 px-2 py-1 rounded-lg transition"
                 title="View registration timeline"
               >
                 <LineChart className="w-3.5 h-3.5" />
-                <span>Statistics</span>
+                <span>Stats</span>
               </button>
             </div>
             <div className="flex items-center justify-between text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">
@@ -559,7 +601,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Card 2: Total Surveys */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow transition">
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow transition">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Surveys</span>
               <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
@@ -567,14 +609,14 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="flex items-baseline justify-between mt-3">
-              <p className="text-3xl font-bold text-slate-900">{stats.totalSurveys}</p>
+              <p className="text-2xl sm:text-3xl font-bold text-slate-900">{stats.totalSurveys}</p>
               <button
                 onClick={() => openTrendModal('surveys')}
-                className="inline-flex items-center space-x-1.5 text-xs font-semibold text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200/60 px-2.5 py-1 rounded-lg transition"
+                className="inline-flex items-center space-x-1 text-xs font-semibold text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200/60 px-2 py-1 rounded-lg transition"
                 title="View survey creation timeline"
               >
                 <LineChart className="w-3.5 h-3.5" />
-                <span>Statistics</span>
+                <span>Stats</span>
               </button>
             </div>
             <div className="flex items-center space-x-2 text-xs text-slate-600 mt-3 pt-3 border-t border-slate-100">
@@ -590,8 +632,40 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Card 3: Total Responses */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow transition">
+          {/* Card 3: Total Polls */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow transition">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Polls</span>
+              <div className="p-2 bg-sky-50 text-sky-600 rounded-lg">
+                <Layers className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="flex items-baseline justify-between mt-3">
+              <p className="text-2xl sm:text-3xl font-bold text-slate-900">{stats.totalPolls || 0}</p>
+              <button
+                onClick={() => openTrendModal('polls')}
+                className="inline-flex items-center space-x-1 text-xs font-semibold text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200/60 px-2 py-1 rounded-lg transition"
+                title="View poll creation timeline"
+              >
+                <LineChart className="w-3.5 h-3.5" />
+                <span>Stats</span>
+              </button>
+            </div>
+            <div className="flex items-center space-x-2 text-xs text-slate-600 mt-3 pt-3 border-t border-slate-100">
+              <span className="inline-flex items-center text-emerald-600 font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                {stats.activePolls || 0} Live
+              </span>
+              <span className="text-slate-300">•</span>
+              <span className="inline-flex items-center text-slate-500">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
+                {(stats.draftPolls || 0) + (stats.closedPolls || 0)} Draft/Closed
+              </span>
+            </div>
+          </div>
+
+          {/* Card 4: Total Responses */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow transition">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Responses</span>
               <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
@@ -599,23 +673,23 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="flex items-baseline justify-between mt-3">
-              <p className="text-3xl font-bold text-slate-900">{stats.totalResponses}</p>
+              <p className="text-2xl sm:text-3xl font-bold text-slate-900">{stats.totalResponses}</p>
               <button
                 onClick={() => openTrendModal('responses')}
-                className="inline-flex items-center space-x-1.5 text-xs font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/60 px-2.5 py-1 rounded-lg transition"
+                className="inline-flex items-center space-x-1 text-xs font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/60 px-2 py-1 rounded-lg transition"
                 title="View response submission timeline"
               >
                 <LineChart className="w-3.5 h-3.5" />
-                <span>Statistics</span>
+                <span>Stats</span>
               </button>
             </div>
             <div className="flex items-center justify-between text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">
-              <span>Avg {stats.avgResponsesPerSurvey} responses / survey</span>
+              <span>Surveys & live polls</span>
             </div>
           </div>
 
-          {/* Card 4: Total Questions */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow transition">
+          {/* Card 5: Total Questions */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow transition">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Questions Built</span>
               <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
@@ -623,23 +697,23 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="flex items-baseline justify-between mt-3">
-              <p className="text-3xl font-bold text-slate-900">{stats.totalQuestions}</p>
+              <p className="text-2xl sm:text-3xl font-bold text-slate-900">{stats.totalQuestions}</p>
               <button
                 onClick={() => openTrendModal('questions')}
-                className="inline-flex items-center space-x-1.5 text-xs font-semibold text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/60 px-2.5 py-1 rounded-lg transition"
+                className="inline-flex items-center space-x-1 text-xs font-semibold text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/60 px-2 py-1 rounded-lg transition"
                 title="View question creation timeline"
               >
                 <LineChart className="w-3.5 h-3.5" />
-                <span>Statistics</span>
+                <span>Stats</span>
               </button>
             </div>
             <div className="flex items-center justify-between text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">
-              <span>Platform questions count</span>
+              <span>Surveys & live polls</span>
             </div>
           </div>
 
-          {/* Card 5: Response Emails Sent */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow transition">
+          {/* Card 6: Response Emails Sent */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow transition">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Emails Sent</span>
               <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
@@ -647,10 +721,10 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="flex items-baseline justify-between mt-3">
-              <p className="text-3xl font-bold text-slate-900">{stats.totalEmailsSent || 0}</p>
+              <p className="text-2xl sm:text-3xl font-bold text-slate-900">{stats.totalEmailsSent || 0}</p>
             </div>
             <div className="flex items-center justify-between text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">
-              <span>Response notifications</span>
+              <span>Notifications sent</span>
             </div>
           </div>
         </div>
@@ -680,6 +754,18 @@ export default function AdminDashboard() {
         >
           <FileText className="w-4 h-4" />
           <span>All Surveys ({surveys.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('polls')}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition flex items-center space-x-2 ${
+            activeTab === 'polls'
+              ? 'border-brand-600 text-brand-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>All Polls ({polls.length})</span>
         </button>
 
         <button
@@ -775,9 +861,16 @@ export default function AdminDashboard() {
                       </td>
 
                       <td className="px-6 py-4 text-center">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
-                          {u.survey_count} total ({u.active_survey_count} live)
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                            {u.survey_count} surveys
+                          </span>
+                          {u.poll_count > 0 && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+                              {u.poll_count} polls
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="px-6 py-4 text-center font-semibold text-slate-900">
@@ -797,10 +890,10 @@ export default function AdminDashboard() {
                       <td className="px-6 py-4 text-right whitespace-nowrap space-x-2">
                         <button
                           onClick={() => handleViewUser(u)}
-                          title="View user's surveys"
+                          title="View user's surveys and live polls"
                           className="px-2.5 py-1.5 text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg transition"
                         >
-                          View Surveys ({u.survey_count})
+                          View Surveys & Polls ({u.total_items_count ?? (u.survey_count + (u.poll_count || 0))})
                         </button>
 
                         <button
@@ -998,7 +1091,175 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* TAB 3: RECENT ACTIVITY */}
+      {/* TAB 3: ALL POLLS MANAGEMENT */}
+      {activeTab === 'polls' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          {/* Poll Controls Bar */}
+          <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={pollSearch}
+                onChange={(e) => setPollSearch(e.target.value)}
+                placeholder="Filter by title, description, code or author..."
+                className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-600 bg-white"
+              />
+              {pollSearch && (
+                <button
+                  onClick={() => setPollSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-semibold text-slate-500 uppercase">Status:</span>
+              <select
+                value={pollStatusFilter}
+                onChange={(e) => setPollStatusFilter(e.target.value)}
+                className="text-xs font-semibold px-3 py-2 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-600 text-slate-700"
+              >
+                <option value="all">All Polls</option>
+                <option value="live">Live Only</option>
+                <option value="draft">Draft Only</option>
+                <option value="closed">Closed Only</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Polls Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-600">
+              <thead className="bg-slate-100/75 text-xs uppercase font-bold text-slate-600 tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-3.5">Poll Title</th>
+                  <th className="px-6 py-3.5">Author</th>
+                  <th className="px-6 py-3.5 text-center">Status</th>
+                  <th className="px-6 py-3.5 text-center">Questions</th>
+                  <th className="px-6 py-3.5 text-center">Votes Recorded</th>
+                  <th className="px-6 py-3.5">Created</th>
+                  <th className="px-6 py-3.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {polls.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="px-6 py-12 text-center text-slate-500">
+                      No polls found matching filters.
+                    </td>
+                  </tr>
+                ) : (
+                  polls.map((p) => (
+                    <tr key={p.id} className="hover:bg-slate-50/80 transition">
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-slate-900 max-w-xs truncate" title={p.title}>
+                          {p.title}
+                        </div>
+                        {p.description && (
+                          <div className="text-xs text-slate-400 max-w-xs truncate" title={p.description}>
+                            {p.description}
+                          </div>
+                        )}
+                        <span className="text-[11px] text-slate-400 font-mono">PIN: {p.code} • /join/{p.code}</span>
+                      </td>
+
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-xs font-medium text-slate-700">{p.author_email}</span>
+                      </td>
+
+                      <td className="px-6 py-4 text-center whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            p.status === 'live'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : p.status === 'draft'
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                              : 'bg-slate-100 text-slate-600 border border-slate-200'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+                              p.status === 'live' ? 'bg-emerald-500 animate-pulse' : p.status === 'draft' ? 'bg-amber-500' : 'bg-slate-400'
+                            }`}
+                          ></span>
+                          {p.status ? p.status.charAt(0).toUpperCase() + p.status.slice(1) : 'Draft'}
+                        </span>
+                      </td>
+
+                      <td className="px-6 py-4 text-center font-medium text-slate-700">
+                        {p.question_count}
+                      </td>
+
+                      <td className="px-6 py-4 text-center font-bold text-slate-900">
+                        {p.response_count}
+                      </td>
+
+                      <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-500">
+                        {new Date(p.created_at).toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric'
+                        })}
+                      </td>
+
+                      <td className="px-6 py-4 text-right whitespace-nowrap space-x-1.5">
+                        <a
+                          href={`/join/${p.code}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Open participant join screen"
+                          className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-slate-100 rounded-lg inline-flex items-center transition"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+
+                        <a
+                          href={`/p/${p.code}/present`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Open presenter view"
+                          className="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg inline-flex items-center transition"
+                        >
+                          <Layers className="w-4 h-4" />
+                        </a>
+
+                        <Link
+                          to={`/polls/${p.id}/host`}
+                          title="Open host controller"
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg inline-flex items-center transition"
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                        </Link>
+
+                        <Link
+                          to={`/polls/${p.id}/analytics`}
+                          title="View poll results & analytics"
+                          className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg inline-flex items-center transition"
+                        >
+                          <BarChart2 className="w-4 h-4" />
+                        </Link>
+
+                        <button
+                          onClick={() => setDeletingTarget({ type: 'poll', item: p })}
+                          title="Delete poll"
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg inline-flex items-center transition"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: RECENT ACTIVITY */}
       {activeTab === 'activity' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Latest Creator Registrations */}
@@ -1035,24 +1296,35 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Latest Survey Responses */}
+          {/* Latest Submissions (Surveys & Polls) */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
                 <MessageSquare className="w-5 h-5 text-emerald-600" />
-                <span>Latest Survey Submissions</span>
+                <span>Latest Submissions & Votes</span>
               </h3>
-              <span className="text-xs text-slate-400">Last 5 returns</span>
+              <span className="text-xs text-slate-400">Latest platform activity</span>
             </div>
 
             <div className="divide-y divide-slate-100">
               {recentResponses.length === 0 ? (
-                <p className="py-6 text-sm text-center text-slate-400">No responses submitted yet.</p>
+                <p className="py-6 text-sm text-center text-slate-400">No submissions recorded yet.</p>
               ) : (
                 recentResponses.map((rr) => (
                   <div key={rr.id} className="py-3 flex items-center justify-between text-sm">
                     <div>
-                      <p className="font-semibold text-slate-900">{rr.survey_title}</p>
+                      <div className="flex items-center space-x-2">
+                        <p className="font-semibold text-slate-900">{rr.survey_title}</p>
+                        <span
+                          className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                            rr.type === 'poll'
+                              ? 'bg-sky-50 text-sky-700 border border-sky-200'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          }`}
+                        >
+                          {rr.type === 'poll' ? 'Poll Vote' : 'Survey'}
+                        </span>
+                      </div>
                       <p className="text-xs text-slate-500">Creator: {rr.author_email}</p>
                     </div>
                     <div className="text-right">
@@ -1073,18 +1345,18 @@ export default function AdminDashboard() {
 
       {/* ================= MODALS ================= */}
 
-      {/* MODAL 1: VIEW USER'S SURVEYS */}
+      {/* MODAL 1: VIEW USER'S SURVEYS & POLLS */}
       {viewingUser && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-2xl max-w-3xl w-full border border-slate-200 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="p-6 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
               <div>
                 <h3 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
                   <Users className="w-5 h-5 text-brand-600" />
-                  <span>Surveys by {viewingUser.user.email}</span>
+                  <span>Surveys & Polls by {viewingUser.user.email}</span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Joined on {new Date(viewingUser.user.created_at).toLocaleDateString()} • {viewingUser.surveys?.length || 0} total surveys • {viewingUser.user.emails_sent || 0} response emails sent
+                  Joined on {new Date(viewingUser.user.created_at).toLocaleDateString()} • {viewingUser.surveys?.length || 0} total items • {viewingUser.user.emails_sent || 0} response emails sent
                 </p>
               </div>
               <button
@@ -1099,64 +1371,138 @@ export default function AdminDashboard() {
               {(!viewingUser.surveys || viewingUser.surveys.length === 0) ? (
                 <div className="text-center py-10 text-slate-500">
                   <FileText className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                  <p className="text-sm font-semibold text-slate-700">No surveys created yet</p>
-                  <p className="text-xs text-slate-400 mt-1">This user has not authored any questionnaires.</p>
+                  <p className="text-sm font-semibold text-slate-700">No surveys or polls created yet</p>
+                  <p className="text-xs text-slate-400 mt-1">This user has not authored any questionnaires or interactive polls.</p>
                 </div>
               ) : (
                 viewingUser.surveys.map((s) => (
-                  <div key={s.id} className="py-4 flex items-center justify-between gap-4">
+                  <div key={`${s.type}-${s.id}`} className="py-4 flex items-center justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center space-x-2">
+                        <span
+                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                            s.type === 'poll'
+                              ? 'bg-sky-100 text-sky-800 border border-sky-200'
+                              : 'bg-purple-100 text-purple-800 border border-purple-200'
+                          }`}
+                        >
+                          {s.type === 'poll' ? 'Poll' : 'Survey'}
+                        </span>
                         <p className="font-semibold text-slate-900 text-sm truncate">{s.title}</p>
                         <span
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                            s.is_active === 1
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-slate-100 text-slate-500 border border-slate-200'
+                            s.type === 'poll'
+                              ? (s.status === 'live'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : s.status === 'draft'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : 'bg-slate-100 text-slate-500 border border-slate-200')
+                              : (s.is_active === 1
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-slate-100 text-slate-500 border border-slate-200')
                           }`}
                         >
-                          {s.is_active === 1 ? 'Live' : 'Closed'}
+                          {s.type === 'poll' ? (s.status ? s.status.charAt(0).toUpperCase() + s.status.slice(1) : 'Draft') : (s.is_active === 1 ? 'Live' : 'Closed')}
                         </span>
                       </div>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        {s.question_count} questions • {s.response_count} responses • Created {new Date(s.created_at).toLocaleDateString()}
+                        {s.question_count} questions • {s.response_count} responses/votes • Created {new Date(s.created_at).toLocaleDateString()}
+                        {s.type === 'poll' && s.code && <span className="ml-2 font-mono text-[11px] text-slate-500">PIN: {s.code}</span>}
                       </p>
                     </div>
 
-                    <div className="flex items-center space-x-2">
-                      <a
-                        href={`/s/${s.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition inline-flex items-center space-x-1"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        <span>View</span>
-                      </a>
+                    <div className="flex items-center space-x-1.5">
+                      {s.type === 'poll' ? (
+                        <>
+                          <a
+                            href={`/join/${s.code || s.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-1 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition inline-flex items-center space-x-1"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>Join</span>
+                          </a>
 
-                      <Link
-                        to={`/surveys/${s.id}/analytics`}
-                        className="px-2.5 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition inline-flex items-center space-x-1"
-                      >
-                        <BarChart2 className="w-3.5 h-3.5" />
-                        <span>Analytics</span>
-                      </Link>
+                          <a
+                            href={`/p/${s.code}/present`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-1 text-xs font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg transition inline-flex items-center space-x-1"
+                          >
+                            <Layers className="w-3.5 h-3.5" />
+                            <span>Present</span>
+                          </a>
 
-                      <button
-                        onClick={() => handleDuplicateSurvey(s)}
-                        title="Duplicate survey"
-                        className="px-2.5 py-1.5 text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg transition inline-flex items-center space-x-1"
-                      >
-                        <CopyPlus className="w-3.5 h-3.5" />
-                        <span>Duplicate</span>
-                      </button>
+                          <Link
+                            to={`/polls/${s.id}/host`}
+                            className="px-2 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition inline-flex items-center space-x-1"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            <span>Host</span>
+                          </Link>
 
-                      <button
-                        onClick={() => handleToggleSurveyStatus(s)}
-                        className="px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg transition"
-                      >
-                        {s.is_active === 1 ? 'Deactivate' : 'Activate'}
-                      </button>
+                          <Link
+                            to={`/polls/${s.id}/analytics`}
+                            className="px-2 py-1 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition inline-flex items-center space-x-1"
+                          >
+                            <BarChart2 className="w-3.5 h-3.5" />
+                            <span>Analytics</span>
+                          </Link>
+
+                          <button
+                            onClick={() => setDeletingTarget({ type: 'poll', item: s })}
+                            title="Delete poll"
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <a
+                            href={`/s/${s.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition inline-flex items-center space-x-1"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>View</span>
+                          </a>
+
+                          <Link
+                            to={`/surveys/${s.id}/analytics`}
+                            className="px-2.5 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition inline-flex items-center space-x-1"
+                          >
+                            <BarChart2 className="w-3.5 h-3.5" />
+                            <span>Analytics</span>
+                          </Link>
+
+                          <button
+                            onClick={() => handleDuplicateSurvey(s)}
+                            title="Duplicate survey"
+                            className="px-2.5 py-1.5 text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg transition inline-flex items-center space-x-1"
+                          >
+                            <CopyPlus className="w-3.5 h-3.5" />
+                            <span>Duplicate</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleToggleSurveyStatus(s)}
+                            className="px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg transition"
+                          >
+                            {s.is_active === 1 ? 'Deactivate' : 'Activate'}
+                          </button>
+
+                          <button
+                            onClick={() => setDeletingTarget({ type: 'survey', item: s })}
+                            title="Delete survey"
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))
@@ -1343,7 +1689,11 @@ export default function AdminDashboard() {
               </div>
               <div>
                 <h3 className="text-lg font-bold text-slate-900">
-                  {deletingTarget.type === 'user' ? 'Delete User Account' : 'Delete Survey'}
+                  {deletingTarget.type === 'user'
+                    ? 'Delete User Account'
+                    : deletingTarget.type === 'survey'
+                    ? 'Delete Survey'
+                    : 'Delete Poll'}
                 </h3>
                 <p className="text-sm text-slate-600 mt-1">
                   {deletingTarget.type === 'user' ? (
@@ -1352,16 +1702,25 @@ export default function AdminDashboard() {
                       <span className="font-semibold text-slate-900">{deletingTarget.item.email}</span>?
                       <br />
                       <span className="text-red-600 font-semibold mt-1 inline-block">
-                        Warning: All surveys, questions, and responses authored by this user will be irrevocably destroyed.
+                        Warning: All surveys, polls, questions, and responses authored by this user will be irrevocably destroyed.
                       </span>
                     </>
-                  ) : (
+                  ) : deletingTarget.type === 'survey' ? (
                     <>
                       Are you sure you want to permanently delete survey{' '}
                       <span className="font-semibold text-slate-900">"{deletingTarget.item.title}"</span>?
                       <br />
                       <span className="text-red-600 font-semibold mt-1 inline-block">
                         Warning: All questions and collected responses will be permanently removed.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      Are you sure you want to permanently delete live poll{' '}
+                      <span className="font-semibold text-slate-900">"{deletingTarget.item.title}"</span>?
+                      <br />
+                      <span className="text-red-600 font-semibold mt-1 inline-block">
+                        Warning: All poll questions and participant submissions will be permanently removed.
                       </span>
                     </>
                   )}

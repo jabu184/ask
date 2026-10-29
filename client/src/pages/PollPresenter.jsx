@@ -24,7 +24,8 @@ import {
   ChevronRight,
   HelpCircle,
   CheckCircle2,
-  Trophy
+  Trophy,
+  Star
 } from 'lucide-react';
 
 export default function PollPresenter() {
@@ -39,6 +40,7 @@ export default function PollPresenter() {
   const [showResults, setShowResults] = useState(true);
   const [votingOpen, setVotingOpen] = useState(true);
   const [participantCount, setParticipantCount] = useState(0);
+  const [activeParticipantIds, setActiveParticipantIds] = useState([]);
   const [qaQuestions, setQaQuestions] = useState([]);
   const [showQaSidebar, setShowQaSidebar] = useState(false);
   const [showCorrectAnswer, setShowCorrectAnswer] = useState(false);
@@ -50,7 +52,7 @@ export default function PollPresenter() {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Full join URL
-  const joinUrl = `${window.location.origin}/p/${encodeURIComponent(code || '')}`;
+  const joinUrl = `${window.location.origin}/join/${encodeURIComponent(code || '')}`;
 
   useEffect(() => {
     // Generate high-resolution QR Code data URL with dark on white contrast
@@ -130,6 +132,7 @@ export default function PollPresenter() {
           if (state.leaderboard) setLeaderboard(state.leaderboard);
           if (state.qaQuestions) setQaQuestions(state.qaQuestions);
           if (typeof state.participantCount === 'number') setParticipantCount(state.participantCount);
+          if (state.activeParticipantIds) setActiveParticipantIds(state.activeParticipantIds);
           setLoading(false);
         });
 
@@ -174,6 +177,9 @@ export default function PollPresenter() {
 
         socket.on('poll:participant_count', (payload) => {
           setParticipantCount(payload.count || 0);
+          if (payload.activeParticipantIds) {
+            setActiveParticipantIds(payload.activeParticipantIds);
+          }
         });
 
         socket.on('poll:data_purged', () => {
@@ -301,6 +307,22 @@ export default function PollPresenter() {
   const highlightedQa = qaQuestions.find((q) => q.is_highlighted === 1 && !q.is_answered);
   const isLive = poll.status === 'live';
   const showSideColumn = isLive && ((Boolean(isQuizMode) && Boolean(showLeaderboard)) || (Boolean(poll.qa_enabled) && Boolean(showQaSidebar)));
+
+  const getQuestionOptions = (q) => {
+    if (!q || !q.options) return [];
+    if (Array.isArray(q.options)) return q.options;
+    try {
+      return JSON.parse(q.options);
+    } catch {
+      return [];
+    }
+  };
+
+  // Only display active users (those currently navigated to the participant page)
+  const activePlayers = leaderboard.filter((p) => {
+    const pid = p.participantId || p.participant_id;
+    return activeParticipantIds.includes(pid);
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col justify-between font-sans selection:bg-brand-500 selection:text-white">
@@ -437,7 +459,7 @@ export default function PollPresenter() {
                       Or visit in your browser:
                     </div>
                     <div className="text-base sm:text-lg font-bold text-brand-700 font-mono">
-                      ask.urspace.com/p
+                      ask.urspace.com/join
                     </div>
                     <div className="bg-slate-900 text-white rounded-2xl p-3.5 shadow-inner mt-1">
                       <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
@@ -451,7 +473,7 @@ export default function PollPresenter() {
                 </div>
               </div>
 
-              {/* Right Column: Joined Participants Roster (narrower, listed top-down) */}
+              {/* Right Column: Active Participants Roster (narrower, listed top-down, active users only) */}
               <div className="lg:col-span-4 flex flex-col">
                 <div className="bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm flex flex-col justify-between h-full space-y-3">
                   <div>
@@ -459,28 +481,28 @@ export default function PollPresenter() {
                       <div className="flex items-center space-x-2">
                         <Trophy className="w-4 h-4 text-amber-500" />
                         <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                          Joined Players
+                          Active Players
                         </h3>
                       </div>
                       <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-xs font-black">
-                        {leaderboard.length}
+                        {activePlayers.length}
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500">
-                      Players in lobby ready to play
+                      Players currently in live lobby
                     </p>
                   </div>
 
                   {/* Top-down vertical list */}
                   <div className="flex-1 overflow-y-auto max-h-[460px] divide-y divide-slate-100 pr-1">
-                    {leaderboard.length === 0 ? (
+                    {activePlayers.length === 0 ? (
                       <div className="py-16 text-center text-xs text-slate-400 italic space-y-2">
                         <div className="text-3xl">🚀</div>
-                        <p>No players joined yet.</p>
-                        <p className="text-[10px] text-slate-400">Scan QR code to be the first!</p>
+                        <p>No active players in lobby yet.</p>
+                        <p className="text-[10px] text-slate-400">Scan QR code or visit ask.urspace.com/join to join!</p>
                       </div>
                     ) : (
-                      leaderboard.map((player, idx) => (
+                      activePlayers.map((player, idx) => (
                         <div
                           key={player.participantId || player.participant_id || idx}
                           className="py-2.5 px-2 flex items-center justify-between text-xs hover:bg-slate-50/80 rounded-xl transition"
@@ -495,7 +517,7 @@ export default function PollPresenter() {
                             </span>
                           </div>
                           <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/70 px-2 py-0.5 rounded-full shrink-0">
-                            Ready
+                            Active
                           </span>
                         </div>
                       ))
@@ -509,7 +531,7 @@ export default function PollPresenter() {
                       <span>Live Lobby Roster</span>
                     </span>
                     <span className="font-semibold text-slate-700">
-                      {leaderboard.length} ready
+                      {activePlayers.length} online
                     </span>
                   </div>
                 </div>
@@ -552,7 +574,7 @@ export default function PollPresenter() {
                   Or join on any device at:
                 </div>
                 <div className="text-lg sm:text-xl font-bold text-brand-700 font-mono">
-                  ask.urspace.com/p
+                  ask.urspace.com/join
                 </div>
                 <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-inner mt-2">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
@@ -599,7 +621,7 @@ export default function PollPresenter() {
                     1. Scan with phone camera, or visit:
                   </div>
                   <div className="text-sm font-bold text-slate-900 font-mono mb-2">
-                    ask.urspace.com/p
+                    ask.urspace.com/join
                   </div>
                 </div>
 
@@ -696,10 +718,101 @@ export default function PollPresenter() {
                         )}
                       </div>
                     ) : (
-                      <div className="py-12 text-center bg-slate-50 rounded-xl border border-slate-100">
-                        <EyeOff className="w-10 h-10 text-slate-400 mx-auto mb-2" />
-                        <h3 className="text-lg font-bold text-slate-800">Results Hidden</h3>
-                        <p className="text-xs text-slate-500">Votes are being recorded. Results will appear shortly.</p>
+                      /* When results are hidden, still show the possible responses without revealing counts/percentages */
+                      <div className="py-2 space-y-4">
+                        {currentQuestion.question_type === 'multiple_choice' && (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                Possible Options
+                              </span>
+                              <span className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-full">
+                                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                                <span>Responses in progress...</span>
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {getQuestionOptions(currentQuestion).map((opt, i) => (
+                                <div
+                                  key={i}
+                                  className="p-4 rounded-2xl border-2 border-slate-200 bg-slate-50/70 flex items-center justify-between shadow-xs transition"
+                                >
+                                  <div className="flex items-center space-x-3 min-w-0">
+                                    <span className="w-8 h-8 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-sm flex items-center justify-center shrink-0 shadow-xs">
+                                      {String.fromCharCode(65 + i)}
+                                    </span>
+                                    <span className="font-semibold text-slate-800 text-sm truncate">{opt}</span>
+                                  </div>
+                                  <span className="text-[11px] font-medium text-slate-400 italic shrink-0">
+                                    Collecting...
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {currentQuestion.question_type === 'ranking' && (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                Items to Rank
+                              </span>
+                              <span className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-full">
+                                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                                <span>Responses in progress...</span>
+                              </span>
+                            </div>
+                            <div className="space-y-2">
+                              {getQuestionOptions(currentQuestion).map((opt, i) => (
+                                <div
+                                  key={i}
+                                  className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex items-center justify-between shadow-xs"
+                                >
+                                  <div className="flex items-center space-x-3 min-w-0">
+                                    <span className="w-6 h-6 rounded-lg bg-white border border-slate-200 text-slate-500 font-bold text-xs flex items-center justify-center shrink-0">
+                                      {i + 1}
+                                    </span>
+                                    <span className="font-semibold text-slate-800 text-sm truncate">{opt}</span>
+                                  </div>
+                                  <span className="text-[11px] text-slate-400 italic shrink-0">Ranking in progress...</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {currentQuestion.question_type === 'rating' && (
+                          <div className="py-8 text-center bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-4">
+                            <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full">
+                              <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                              <span>Responses in progress...</span>
+                            </div>
+                            <div className="flex items-center justify-center space-x-3 text-slate-300">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <Star key={star} className="w-10 h-10 fill-slate-200 text-slate-300" />
+                              ))}
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              Audience ratings are currently being submitted. Results will appear once revealed by host.
+                            </p>
+                          </div>
+                        )}
+
+                        {currentQuestion.question_type === 'word_cloud' && (
+                          <div className="py-12 text-center bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
+                            <div className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full">
+                              <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                              <span>Responses in progress...</span>
+                            </div>
+                            <p className="text-sm font-semibold text-slate-700">
+                              Collecting words from audience...
+                            </p>
+                            <p className="text-xs text-slate-400">
+                              Word cloud visualization will generate on this screen when results are revealed.
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

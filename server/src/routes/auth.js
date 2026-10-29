@@ -109,22 +109,42 @@ router.get('/me', requireAuth, (req, res) => {
 // User profile with usage stats
 router.get('/profile', requireAuth, (req, res) => {
   try {
+    const userId = req.user.id;
     const stats = db.prepare(`
       SELECT 
-        COUNT(DISTINCT s.id) AS survey_count,
-        SUM(CASE WHEN s.is_active = 1 THEN 1 ELSE 0 END) AS active_survey_count,
-        COUNT(DISTINCT r.id) AS response_count
-      FROM surveys s
-      LEFT JOIN responses r ON r.survey_id = s.id
-      WHERE s.user_id = ?
-    `).get(req.user.id);
+        (SELECT COUNT(*) FROM surveys WHERE user_id = ?) AS survey_count,
+        (SELECT COUNT(*) FROM surveys WHERE user_id = ? AND is_active = 1) AS active_survey_count,
+        (SELECT COUNT(*) FROM questions q JOIN surveys s ON s.id = q.survey_id WHERE s.user_id = ?) AS survey_question_count,
+        (SELECT COUNT(*) FROM responses r JOIN surveys s ON s.id = r.survey_id WHERE s.user_id = ?) AS survey_response_count,
+        (SELECT COUNT(*) FROM polls WHERE user_id = ?) AS poll_count,
+        (SELECT COUNT(*) FROM polls WHERE user_id = ? AND status = 'live') AS active_poll_count,
+        (SELECT COUNT(*) FROM poll_questions pq JOIN polls p ON p.id = pq.poll_id WHERE p.user_id = ?) AS poll_question_count,
+        (SELECT COUNT(*) FROM poll_votes pv JOIN polls p ON p.id = pv.poll_id WHERE p.user_id = ?) AS poll_response_count
+    `).get(userId, userId, userId, userId, userId, userId, userId, userId);
+
+    const surveyCount = Number(stats?.survey_count || 0);
+    const activeSurveyCount = Number(stats?.active_survey_count || 0);
+    const surveyQuestionCount = Number(stats?.survey_question_count || 0);
+    const surveyResponseCount = Number(stats?.survey_response_count || 0);
+    const pollCount = Number(stats?.poll_count || 0);
+    const activePollCount = Number(stats?.active_poll_count || 0);
+    const pollQuestionCount = Number(stats?.poll_question_count || 0);
+    const pollResponseCount = Number(stats?.poll_response_count || 0);
 
     return res.json({
       user: req.user,
       stats: {
-        survey_count: Number(stats?.survey_count || 0),
-        active_survey_count: Number(stats?.active_survey_count || 0),
-        response_count: Number(stats?.response_count || 0)
+        survey_count: surveyCount,
+        active_survey_count: activeSurveyCount,
+        survey_question_count: surveyQuestionCount,
+        survey_response_count: surveyResponseCount,
+        poll_count: pollCount,
+        active_poll_count: activePollCount,
+        poll_question_count: pollQuestionCount,
+        poll_response_count: pollResponseCount,
+        total_questions: surveyQuestionCount + pollQuestionCount,
+        total_responses: surveyResponseCount + pollResponseCount,
+        response_count: surveyResponseCount + pollResponseCount
       }
     });
   } catch (err) {

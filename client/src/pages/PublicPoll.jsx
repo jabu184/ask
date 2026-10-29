@@ -365,9 +365,11 @@ export default function PublicPoll() {
     };
   }, [code, participantId]);
 
+  const isLockedByHost = showCorrectAnswer || Boolean(currentQuestion?.answer_revealed);
+
   // Handle vote submit
   const handleVote = (val) => {
-    if (!poll || !currentQuestion || !votingOpen || submittingVote || showCorrectAnswer) return;
+    if (!poll || !currentQuestion || !votingOpen || submittingVote || isLockedByHost) return;
     setSubmittingVote(true);
 
     if (socketRef.current && socketRef.current.connected) {
@@ -407,7 +409,7 @@ export default function PublicPoll() {
 
   // Handle removing a participant's own word from the cloud
   const handleRemoveWord = (voteId) => {
-    if (showCorrectAnswer) return;
+    if (isLockedByHost) return;
     setMyWords((prev) => {
       const next = prev.filter((w) => w.id !== voteId);
       if (next.length === 0) setHasVoted(false);
@@ -878,10 +880,10 @@ export default function PublicPoll() {
                           return (
                             <button
                               key={i}
-                              disabled={submittingVote || showCorrectAnswer}
+                              disabled={submittingVote || isLockedByHost}
                               onClick={() => handleVote(opt)}
                               className={`w-full text-left p-4 rounded-2xl border-2 transition-all shadow-xs flex items-center justify-between group ${
-                                showCorrectAnswer ? 'cursor-default' : 'active:scale-99'
+                                isLockedByHost ? 'cursor-default' : 'active:scale-99'
                               } ${
                                 isCorrect
                                   ? 'border-emerald-500 bg-emerald-50/80 text-emerald-950 font-bold ring-2 ring-emerald-500/20'
@@ -942,7 +944,7 @@ export default function PublicPoll() {
                                   <CheckCircle2 className="w-3.5 h-3.5 text-brand-600" />
                                   <span>Your Submitted Words ({myWords.length})</span>
                                 </span>
-                                {votingOpen && !showCorrectAnswer && (
+                                {votingOpen && !isLockedByHost && (
                                   <span className="text-[11px] font-normal text-slate-500">
                                     Click ✕ to remove any word
                                   </span>
@@ -955,11 +957,11 @@ export default function PublicPoll() {
                                     className="inline-flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-xl bg-white border border-brand-200 text-brand-900 text-xs font-bold shadow-2xs group hover:border-brand-400 transition"
                                   >
                                     <span>{item.value}</span>
-                                    {votingOpen && !showCorrectAnswer && (
+                                    {votingOpen && !isLockedByHost && (
                                       <button
                                         type="button"
                                         onClick={() => handleRemoveWord(item.id)}
-                                        className="p-0.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                                        className="p-0.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
                                         title={`Remove "${item.value}"`}
                                       >
                                         <X className="w-3.5 h-3.5" />
@@ -974,7 +976,7 @@ export default function PublicPoll() {
                           <form
                             onSubmit={(e) => {
                               e.preventDefault();
-                              if (showCorrectAnswer) return;
+                              if (isLockedByHost) return;
                               const trimmed = textInput.trim();
                               if (trimmed) {
                                 const isDuplicate = myWords.some((w) => w.value.toLowerCase() === trimmed.toLowerCase());
@@ -1000,10 +1002,10 @@ export default function PublicPoll() {
                                 type="text"
                                 maxLength={allowMultiple ? 100 : 35}
                                 value={textInput}
-                                disabled={!votingOpen || showCorrectAnswer}
+                                disabled={!votingOpen || isLockedByHost}
                                 onChange={(e) => setTextInput(e.target.value)}
                                 placeholder={
-                                  showCorrectAnswer
+                                  isLockedByHost
                                     ? 'Voting is locked for this question'
                                     : allowMultiple
                                     ? 'Type a word and press Enter...'
@@ -1012,7 +1014,7 @@ export default function PublicPoll() {
                                 className="w-full px-4 py-3.5 rounded-2xl border-2 border-slate-200 focus:border-brand-500 focus:ring-0 text-base font-medium text-slate-900 placeholder:text-slate-400 disabled:bg-slate-50 disabled:cursor-not-allowed"
                                 autoFocus
                               />
-                              {allowMultiple && !showCorrectAnswer && (
+                              {allowMultiple && !isLockedByHost && (
                                 <p className="text-[11px] text-slate-500 mt-1.5">
                                   You can add multiple words sequentially. Each word will appear in the cloud, and you can delete your words anytime.
                                 </p>
@@ -1020,12 +1022,12 @@ export default function PublicPoll() {
                             </div>
                             <button
                               type="submit"
-                              disabled={!textInput.trim() || submittingVote || showCorrectAnswer}
-                              className="w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-base shadow-sm transition active:scale-98 flex items-center justify-center gap-2"
+                              disabled={!textInput.trim() || submittingVote || isLockedByHost}
+                              className="w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-base shadow-sm transition active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
                             >
                               <Send className="w-4 h-4" />
                               <span>
-                                {showCorrectAnswer
+                                {isLockedByHost
                                   ? 'Voting Locked'
                                   : allowMultiple
                                   ? myWords.length > 0
@@ -1045,7 +1047,7 @@ export default function PublicPoll() {
                     {currentQuestion.question_type === 'rating' && (
                       <div className="py-2">
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 text-center">
-                          {showCorrectAnswer ? 'Voting is locked:' : hasVoted ? 'Change your rating anytime:' : 'Select your rating (1 to 5):'}
+                          {isLockedByHost ? 'Voting is locked:' : hasVoted ? 'Change your rating anytime:' : 'Select your rating (1 to 5):'}
                         </label>
                         <div className="flex items-center justify-center gap-2 sm:gap-4">
                           {[1, 2, 3, 4, 5].map((star) => {
@@ -1054,10 +1056,10 @@ export default function PublicPoll() {
                             return (
                               <button
                                 key={star}
-                                disabled={submittingVote || showCorrectAnswer}
+                                disabled={submittingVote || isLockedByHost}
                                 onClick={() => handleVote(String(star))}
                                 className={`flex flex-col items-center justify-center w-14 h-16 sm:w-16 sm:h-20 rounded-2xl border-2 transition-all group shadow-xs ${
-                                  showCorrectAnswer ? 'cursor-default' : 'active:scale-95'
+                                  isLockedByHost ? 'cursor-default' : 'active:scale-95'
                                 } ${
                                   isSelected
                                     ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-400/30'
@@ -1110,18 +1112,18 @@ export default function PublicPoll() {
                               <div className="flex items-center gap-1 shrink-0">
                                 <button
                                   type="button"
-                                  disabled={idx === 0 || submittingVote || showCorrectAnswer}
+                                  disabled={idx === 0 || submittingVote || isLockedByHost}
                                   onClick={() => moveRankItem(idx, 'up')}
-                                  className="p-2 rounded-xl bg-slate-100 hover:bg-brand-50 text-slate-600 hover:text-brand-600 disabled:opacity-25 transition active:scale-95"
+                                  className="p-2 rounded-xl bg-slate-100 hover:bg-brand-50 text-slate-600 hover:text-brand-600 disabled:opacity-25 transition active:scale-95 cursor-pointer"
                                   title="Move Up"
                                 >
                                   <ChevronUp className="w-4 h-4" />
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={idx === rankedItems.length - 1 || submittingVote || showCorrectAnswer}
+                                  disabled={idx === rankedItems.length - 1 || submittingVote || isLockedByHost}
                                   onClick={() => moveRankItem(idx, 'down')}
-                                  className="p-2 rounded-xl bg-slate-100 hover:bg-brand-50 text-slate-600 hover:text-brand-600 disabled:opacity-25 transition active:scale-95"
+                                  className="p-2 rounded-xl bg-slate-100 hover:bg-brand-50 text-slate-600 hover:text-brand-600 disabled:opacity-25 transition active:scale-95 cursor-pointer"
                                   title="Move Down"
                                 >
                                   <ChevronDown className="w-4 h-4" />
@@ -1133,12 +1135,12 @@ export default function PublicPoll() {
 
                         <button
                           type="button"
-                          disabled={submittingVote || showCorrectAnswer || rankedItems.length === 0}
+                          disabled={submittingVote || isLockedByHost || rankedItems.length === 0}
                           onClick={() => handleVote(rankedItems)}
-                          className="w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-sm shadow-sm transition active:scale-98 flex items-center justify-center gap-2"
+                          className="w-full py-3.5 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-sm shadow-sm transition active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
                         >
                           <CheckCircle2 className="w-4 h-4" />
-                          <span>{showCorrectAnswer ? 'Voting Locked' : hasVoted ? 'Update Ranking' : 'Submit Ranking'}</span>
+                          <span>{isLockedByHost ? 'Voting Locked' : hasVoted ? 'Update Ranking' : 'Submit Ranking'}</span>
                         </button>
                       </div>
                     )}
@@ -1178,6 +1180,21 @@ export default function PublicPoll() {
                       </p>
                     </div>
                   </div>
+                ) : isLockedByHost ? (
+                  <div className="mt-5 p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-3 text-slate-800 text-sm font-semibold animate-in fade-in">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <div className="flex-1">
+                      <p>Your response is recorded and locked.</p>
+                      {userVote && (
+                        <p className="text-xs text-slate-600 font-normal mt-0.5">
+                          Final choice: <strong className="font-bold">
+                            {Array.isArray(userVote) ? 'Your submitted ranking' : userVote}
+                          </strong>
+                          {' • Answers have been locked for this question'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 ) : hasVoted && currentQuestion.question_type !== 'word_cloud' ? (
                   <div className="mt-5 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-3 text-emerald-800 text-sm font-semibold animate-in fade-in">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
@@ -1188,7 +1205,7 @@ export default function PublicPoll() {
                           Current choice: <strong className="font-bold">
                             {Array.isArray(userVote) ? 'Your custom ranking' : userVote}
                           </strong>
-                          {votingOpen && !showCorrectAnswer ? ' • You can update your answer anytime above' : ' • Voting is finalized'}
+                          {votingOpen && !isLockedByHost ? ' • You can update your answer anytime above' : ' • Voting is finalized'}
                         </p>
                       )}
                     </div>

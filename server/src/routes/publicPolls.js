@@ -72,9 +72,6 @@ router.post('/:id/vote', (req, res) => {
     if (poll.voting_open === 0) {
       return res.status(400).json({ error: 'Voting is currently closed for this question' });
     }
-    if (poll.show_correct_answer === 1) {
-      return res.status(403).json({ error: 'Voting has closed because the correct answer has been revealed' });
-    }
     if (poll.current_question_id !== questionId) {
       return res.status(400).json({ error: 'This question is no longer active' });
     }
@@ -82,6 +79,9 @@ router.post('/:id/vote', (req, res) => {
     const question = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(questionId);
     if (!question) {
       return res.status(404).json({ error: 'Question not found' });
+    }
+    if (poll.show_correct_answer === 1 || question.answer_revealed === 1) {
+      return res.status(403).json({ error: 'Voting has closed and responses are locked for this question' });
     }
 
     // Check question configuration for word_cloud multiple entries
@@ -291,21 +291,26 @@ router.post('/:id/remove-word', (req, res) => {
       return res.status(400).json({ error: 'Missing parameters' });
     }
 
+    const question = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(questionId);
+    const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
+    if (!question || !poll) {
+      return res.status(404).json({ error: 'Question or poll not found' });
+    }
+    if (poll.show_correct_answer === 1 || question.answer_revealed === 1) {
+      return res.status(403).json({ error: 'Voting has closed and responses are locked for this question' });
+    }
+
     db.prepare('DELETE FROM poll_votes WHERE id = ? AND question_id = ? AND participant_id = ?').run(voteId, questionId, participantId);
     const participantWords = db.prepare('SELECT id, value, created_at FROM poll_votes WHERE question_id = ? AND participant_id = ? ORDER BY created_at ASC').all(questionId, participantId);
 
-    const question = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(questionId);
-    const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
-    if (question && poll) {
-      const results = computeQuestionResults(question, pollId);
-      const io = getIO();
-      if (io) {
-        io.to(`poll:${pollId}`).emit('poll:results_update', {
-          questionId,
-          results: (poll.show_results === 1) ? results : null,
-          totalVotes: results.totalVotes
-        });
-      }
+    const results = computeQuestionResults(question, pollId);
+    const io = getIO();
+    if (io) {
+      io.to(`poll:${pollId}`).emit('poll:results_update', {
+        questionId,
+        results: (poll.show_results === 1) ? results : null,
+        totalVotes: results.totalVotes
+      });
     }
 
     res.json({ success: true, words: participantWords });

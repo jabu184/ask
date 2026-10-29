@@ -60,6 +60,7 @@ export default function PollHost() {
   const [showCorrectAnswer, setShowCorrectAnswer] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [leaderboard, setLeaderboard] = useState([]);
+  const [markPromptTargetQId, setMarkPromptTargetQId] = useState(null);
 
   // Tab state: 'live' | 'qa' | 'analytics'
   const [activeTab, setActiveTab] = useState('live');
@@ -259,9 +260,32 @@ export default function PollHost() {
     }
   };
 
-  const handleSelectQuestion = (qId) => {
+  const executeQuestionChange = (targetQId, markPreviousAction = null) => {
     if (socketRef.current) {
-      socketRef.current.emit('poll:host_set_question', { pollId: id, questionId: qId });
+      socketRef.current.emit('poll:host_set_question', {
+        pollId: id,
+        questionId: targetQId,
+        markPreviousAction
+      });
+    }
+    if (markPreviousAction) {
+      setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: 1 } : prev));
+      setQuestions((prev) =>
+        prev.map((q) => (q.id === currentQuestion?.id ? { ...q, answer_revealed: 1 } : q))
+      );
+      if (markPreviousAction === 'reveal_and_mark') {
+        setShowCorrectAnswer(true);
+      }
+    }
+    setMarkPromptTargetQId(null);
+  };
+
+  const handleSelectQuestion = (qId) => {
+    if (!qId || qId === currentQuestion?.id) return;
+    if (currentQuestion && currentQuestion.correct_answer && !currentQuestion.answer_revealed) {
+      setMarkPromptTargetQId(qId);
+    } else {
+      executeQuestionChange(qId, null);
     }
   };
 
@@ -552,7 +576,7 @@ export default function PollHost() {
           </div>
 
           <div className="text-slate-500">
-            Attendees join at: <span className="font-semibold text-slate-700">ask.urspace.com/p</span>
+            Attendees join at: <span className="font-semibold text-slate-700">ask.urspace.com/join</span>
           </div>
         </div>
       </div>
@@ -685,7 +709,8 @@ export default function PollHost() {
           {/* Right Column: Live Stage & Host Controls (8 cols) */}
           <div className="lg:col-span-8 space-y-6">
             {currentQuestion ? (
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
+              <>
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
                 {/* Control Action Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
                   <div className="flex items-center space-x-2">
@@ -876,70 +901,80 @@ export default function PollHost() {
                       totalVotes={liveResults?.totalVotes || 0}
                     />
                   )}
+                </div>
+              </div>
 
-                  {/* Quiz Mode Leaderboard Section */}
-                  {Boolean(poll.is_quiz_mode) && (
-                    <div className="mt-8 pt-6 border-t border-slate-100">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center space-x-2">
-                          <Trophy className="w-4 h-4 text-amber-500" />
-                          <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                            Quiz Standings ({leaderboard.length} players)
-                          </h4>
-                          {showLeaderboard && (
-                            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
-                              Live on Screen
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleToggleLeaderboard}
-                          className={`text-xs font-semibold px-2.5 py-1 rounded-lg transition ${
-                            showLeaderboard
-                              ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              {/* Standalone Quiz Standings Card below the active question card */}
+              {Boolean(poll.is_quiz_mode) && (
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-7 shadow-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-200">
+                        <Trophy className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">
+                          Quiz Standings
+                        </h4>
+                        <p className="text-xs text-slate-500">
+                          {leaderboard.length} {leaderboard.length === 1 ? 'player' : 'players'} registered
+                        </p>
+                      </div>
+                      {showLeaderboard && (
+                        <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-bold border border-amber-300">
+                          Live on Screen
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleLeaderboard}
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-xl border transition cursor-pointer ${
+                        showLeaderboard
+                          ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      {showLeaderboard ? 'Hide Leaderboard from Screen' : 'Show Leaderboard on Screen'}
+                    </button>
+                  </div>
+
+                  {leaderboard.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-slate-400 italic bg-slate-50/60 rounded-xl border border-dashed border-slate-200">
+                      No participants have scored points yet. Correct answers will award points when marked or revealed.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                      {leaderboard.map((player, idx) => (
+                        <div
+                          key={player.participant_id || idx}
+                          className={`p-3 rounded-xl border flex items-center justify-between text-xs transition ${
+                            idx === 0
+                              ? 'bg-amber-50/80 border-amber-300 font-bold text-amber-950 shadow-xs'
+                              : idx === 1
+                              ? 'bg-slate-100/80 border-slate-300 font-semibold text-slate-800'
+                              : idx === 2
+                              ? 'bg-orange-50/80 border-orange-200 font-semibold text-orange-950'
+                              : 'bg-white border-slate-200 text-slate-700'
                           }`}
                         >
-                          {showLeaderboard ? 'Hide from Screen' : 'Show on Screen'}
-                        </button>
-                      </div>
-
-                      {leaderboard.length === 0 ? (
-                        <p className="text-xs text-slate-400 italic">No participants have scored points yet.</p>
-                      ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                          {leaderboard.slice(0, 6).map((player, idx) => (
-                            <div
-                              key={player.participant_id || idx}
-                              className={`p-2.5 rounded-xl border flex items-center justify-between text-xs ${
-                                idx === 0
-                                  ? 'bg-amber-50 border-amber-300 font-bold text-amber-950'
-                                  : idx === 1
-                                  ? 'bg-slate-100 border-slate-300 font-semibold text-slate-800'
-                                  : idx === 2
-                                  ? 'bg-orange-50 border-orange-200 font-semibold text-orange-950'
-                                  : 'bg-white border-slate-200 text-slate-700'
-                              }`}
-                            >
-                              <div className="flex items-center space-x-2 truncate">
-                                <span className="w-5 text-center font-bold text-slate-400">
-                                  {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
-                                </span>
-                                <span className="text-base">{player.avatar || '🚀'}</span>
-                                <span className="truncate">{player.name || 'Anonymous'}</span>
-                              </div>
-                              <span className="font-extrabold text-amber-600 ml-2 whitespace-nowrap">
-                                {player.score} {player.score === 1 ? 'pt' : 'pts'}
-                              </span>
-                            </div>
-                          ))}
+                          <div className="flex items-center space-x-2.5 truncate">
+                            <span className="w-5 text-center font-bold text-slate-400">
+                              {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
+                            </span>
+                            <span className="text-lg">{player.avatar || '🚀'}</span>
+                            <span className="truncate">{player.name || 'Anonymous'}</span>
+                          </div>
+                          <span className="font-extrabold text-amber-600 ml-2 whitespace-nowrap bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                            {player.score} {player.score === 1 ? 'pt' : 'pts'}
+                          </span>
                         </div>
-                      )}
+                      ))}
                     </div>
                   )}
                 </div>
-              </div>
+              )}
+            </>
             ) : (
               <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
                 <BarChart3 className="w-12 h-12 text-slate-400 mx-auto mb-3" />
@@ -1279,6 +1314,65 @@ export default function PollHost() {
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>{purgingData ? 'Purging Data...' : 'Yes, Purge All Data'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Question Navigation: Correct Answer Marking Prompt Modal */}
+      {markPromptTargetQId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-xl border border-slate-200 space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center space-x-3 text-amber-600">
+              <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-lg leading-tight">Mark Correct Answer?</h3>
+                <p className="text-xs text-slate-500">Lock responses and calculate participant scores</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+              The current question has a correct answer designated (<strong>{currentQuestion?.correct_answer}</strong>).
+              Moving away can lock participant submissions so they can no longer be edited or changed.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => executeQuestionChange(markPromptTargetQId, 'reveal_and_mark')}
+                className="w-full px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center space-x-2 cursor-pointer"
+              >
+                <Eye className="w-4 h-4" />
+                <span>Reveal & Mark Answers</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => executeQuestionChange(markPromptTargetQId, 'mark_only')}
+                className="w-full px-4 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-sm transition flex items-center justify-center space-x-2 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>Just Mark Answers</span>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => executeQuestionChange(markPromptTargetQId, null)}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-800 transition cursor-pointer"
+              >
+                Leave Unmarked & Continue
+              </button>
+              <button
+                type="button"
+                onClick={() => setMarkPromptTargetQId(null)}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+              >
+                Stay on Question
               </button>
             </div>
           </div>

@@ -155,18 +155,41 @@ export default function Account() {
 
         {/* Quick Usage Stats */}
         {profileStats && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 pt-6 border-t border-slate-100 text-center sm:text-left">
-            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Surveys Authored</span>
-              <p className="text-xl font-bold text-slate-900 mt-1">{profileStats.survey_count}</p>
-            </div>
-            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Active Surveys</span>
-              <p className="text-xl font-bold text-emerald-600 mt-1">{profileStats.active_survey_count}</p>
-            </div>
-            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Responses Collected</span>
-              <p className="text-xl font-bold text-brand-600 mt-1">{profileStats.response_count}</p>
+          <div className="mt-6 pt-6 border-t border-slate-100">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+              Your Activity &amp; Usage
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center sm:text-left">
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Surveys</span>
+                <p className="text-xl font-bold text-slate-900 mt-1">
+                  {profileStats.survey_count}
+                  <span className="text-xs font-normal text-emerald-700 ml-1.5">
+                    ({profileStats.active_survey_count} active)
+                  </span>
+                </p>
+              </div>
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Polls</span>
+                <p className="text-xl font-bold text-slate-900 mt-1">
+                  {profileStats.poll_count || 0}
+                  <span className="text-xs font-normal text-emerald-700 ml-1.5">
+                    ({profileStats.active_poll_count || 0} live)
+                  </span>
+                </p>
+              </div>
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Questions Built</span>
+                <p className="text-xl font-bold text-indigo-600 mt-1">
+                  {profileStats.total_questions || (profileStats.survey_question_count || 0) + (profileStats.poll_question_count || 0)}
+                </p>
+              </div>
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Total Responses</span>
+                <p className="text-xl font-bold text-brand-600 mt-1">
+                  {profileStats.total_responses || profileStats.response_count || 0}
+                </p>
+              </div>
             </div>
           </div>
         )}

@@ -196,6 +196,11 @@ function getActiveVoterCount(pollId) {
   return new Set(pollVoters.get(pollId).values()).size;
 }
 
+function getActiveParticipantIds(pollId) {
+  if (!pollVoters.has(pollId)) return [];
+  return Array.from(new Set(pollVoters.get(pollId).values()));
+}
+
 function computePollLeaderboard(pollId) {
   try {
     const rows = db.prepare(`
@@ -308,13 +313,17 @@ function getPollState(pollId, participantId = null, isHost = false) {
       created_at: poll.created_at,
       closed_at: poll.closed_at
     },
-    questions: isHost ? questions : undefined,
+    questions: isHost ? questions.map(q => ({
+      ...q,
+      answer_revealed: Boolean(q.answer_revealed)
+    })) : undefined,
     currentQuestion: currentQuestion ? {
       id: currentQuestion.id,
       order_num: currentQuestion.order_num,
       question_text: currentQuestion.question_text,
       question_type: currentQuestion.question_type,
       correct_answer: (isHost || poll.show_correct_answer === 1) ? (currentQuestion.correct_answer || null) : null,
+      answer_revealed: Boolean(currentQuestion.answer_revealed),
       options: (() => {
         try {
           return typeof currentQuestion.options_json === 'string' ? JSON.parse(currentQuestion.options_json) : (currentQuestion.options_json || []);
@@ -330,6 +339,7 @@ function getPollState(pollId, participantId = null, isHost = false) {
     qaQuestions,
     userUpvotes,
     participantCount,
+    activeParticipantIds: getActiveParticipantIds(pollId),
     quizProfile,
     leaderboard
   };
@@ -375,7 +385,10 @@ function initPollSocket(httpServer) {
         socket.emit('poll:state', state);
 
         // Broadcast participant count update (only actual voting participants!)
-        io.to(roomName).emit('poll:participant_count', { count: getActiveVoterCount(pollId) });
+        io.to(roomName).emit('poll:participant_count', {
+          count: getActiveVoterCount(pollId),
+          activeParticipantIds: getActiveParticipantIds(pollId)
+        });
       }
     });
 
@@ -388,16 +401,15 @@ function initPollSocket(httpServer) {
         if (poll.voting_open === 0) {
           return socket.emit('poll:error', { message: 'Voting is currently locked for this question' });
         }
-        if (poll.show_correct_answer === 1) {
-          return socket.emit('poll:error', { message: 'Voting has closed because the correct answer has been revealed' });
-        }
-        if (poll.current_question_id !== questionId) {
-          return socket.emit('poll:error', { message: 'This question is no longer active' });
-        }
-
         const question = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(questionId);
         if (!question) {
           return socket.emit('poll:error', { message: 'Question not found' });
+        }
+        if (poll.show_correct_answer === 1 || question.answer_revealed === 1) {
+          return socket.emit('poll:error', { message: 'Voting has closed and responses are locked for this question' });
+        }
+        if (poll.current_question_id !== questionId) {
+          return socket.emit('poll:error', { message: 'This question is no longer active' });
         }
 
         // Check question configuration for word_cloud multiple entries
@@ -517,14 +529,27 @@ function initPollSocket(httpServer) {
 
         socket.emit('poll:quiz_profile_confirmed', myProfile);
         io.to(`poll:${pollId}`).emit('poll:leaderboard_update', { leaderboard });
+        io.to(`poll:${pollId}`).emit('poll:participant_count', {
+          count: getActiveVoterCount(pollId),
+          activeParticipantIds: getActiveParticipantIds(pollId)
+        });
       } catch (err) {
         console.error('[Register Quiz Participant Error]', err);
         socket.emit('poll:error', { message: 'Failed to register quiz profile' });
       }
     });
 
-    socket.on('poll:host_set_question', ({ pollId, questionId }) => {
+    socket.on('poll:host_set_question', ({ pollId, questionId, markPreviousAction }) => {
       try {
+        const currentPoll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
+        if (currentPoll && currentPoll.current_question_id && markPreviousAction) {
+          db.prepare('UPDATE poll_questions SET answer_revealed = 1 WHERE id = ?').run(currentPoll.current_question_id);
+          if (currentPoll.is_quiz_mode === 1) {
+            const leaderboard = computePollLeaderboard(pollId);
+            io.to(`poll:${pollId}`).emit('poll:leaderboard_update', { leaderboard });
+          }
+        }
+
         db.prepare('UPDATE polls SET current_question_id = ?, voting_open = 1, show_correct_answer = 0 WHERE id = ?').run(questionId, pollId);
         const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
         const question = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(questionId);
@@ -545,6 +570,7 @@ function initPollSocket(httpServer) {
             question_text: question.question_text,
             question_type: question.question_type,
             correct_answer: question.correct_answer || null,
+            answer_revealed: Boolean(question.answer_revealed),
             options: parsedOptions
           },
           voting_open: true,
@@ -754,7 +780,10 @@ function initPollSocket(httpServer) {
           pollVoters.get(currentPollId).delete(socket.id);
         }
         const count = getActiveVoterCount(currentPollId);
-        io.to(`poll:${currentPollId}`).emit('poll:participant_count', { count });
+        io.to(`poll:${currentPollId}`).emit('poll:participant_count', {
+          count,
+          activeParticipantIds: getActiveParticipantIds(currentPollId)
+        });
       }
     });
   });

@@ -43,6 +43,15 @@ export default function App() {
 
           {/* Public Live Poll Join Screen */}
           <Route
+            path="/join"
+            element={
+              <LayoutWithNavbar>
+                <PollJoin />
+              </LayoutWithNavbar>
+            }
+          />
+          <Route path="/join/:code" element={<PublicPoll />} />
+          <Route
             path="/p"
             element={
               <LayoutWithNavbar>

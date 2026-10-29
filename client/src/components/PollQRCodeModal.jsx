@@ -7,8 +7,8 @@ export default function PollQRCodeModal({ poll, isOpen, onClose }) {
   const [copied, setCopied] = useState(false);
 
   const joinUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}/p/${poll?.code}`
-    : `https://ask.urspace.com/p/${poll?.code}`;
+    ? `${window.location.origin}/join/${poll?.code}`
+    : `https://ask.urspace.com/join/${poll?.code}`;
 
   useEffect(() => {
     if (poll && isOpen) {
@@ -50,7 +50,7 @@ export default function PollQRCodeModal({ poll, isOpen, onClose }) {
           </div>
           <h3 className="text-xl font-bold text-slate-900">Join Live Poll</h3>
           <p className="text-sm text-slate-500 mt-1 max-w-xs mx-auto">
-            Scan with any phone camera or visit <strong className="text-slate-700">ask.urspace.com/p</strong>
+            Scan with any phone camera or visit <strong className="text-slate-700">ask.urspace.com/join</strong>
           </p>
         </div>
 

@@ -424,7 +424,7 @@ export default function PollBuilder() {
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-mono text-center text-lg font-bold tracking-widest uppercase focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none"
                 />
                 <p className="text-[11px] text-slate-500 mt-2">
-                  Participants will join at <span className="font-semibold text-slate-700">ask.urspace.com/p</span> using this code, or scan your QR code.
+                  Participants will join at <span className="font-semibold text-slate-700">ask.urspace.com/join</span> using this code, or scan your QR code.
                 </p>
               </div>
 

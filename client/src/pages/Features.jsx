@@ -271,7 +271,7 @@ export default function Features() {
             </div>
             <div className="flex items-center space-x-3 w-full sm:w-auto shrink-0">
               <Link
-                to="/p"
+                to="/join"
                 className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-sm transition text-center flex items-center justify-center space-x-2"
               >
                 <span>Enter PIN Code</span>

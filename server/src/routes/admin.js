@@ -16,8 +16,20 @@ router.get('/stats', (req, res) => {
     const totalSurveys = db.prepare('SELECT COUNT(*) AS count FROM surveys').get().count;
     const activeSurveys = db.prepare('SELECT COUNT(*) AS count FROM surveys WHERE is_active = 1').get().count;
     const inactiveSurveys = db.prepare('SELECT COUNT(*) AS count FROM surveys WHERE is_active = 0').get().count;
-    const totalResponses = db.prepare('SELECT COUNT(*) AS count FROM responses').get().count;
-    const totalQuestions = db.prepare('SELECT COUNT(*) AS count FROM questions').get().count;
+
+    const totalPolls = db.prepare('SELECT COUNT(*) AS count FROM polls').get().count;
+    const activePolls = db.prepare("SELECT COUNT(*) AS count FROM polls WHERE status = 'live'").get().count;
+    const draftPolls = db.prepare("SELECT COUNT(*) AS count FROM polls WHERE status = 'draft'").get().count;
+    const closedPolls = db.prepare("SELECT COUNT(*) AS count FROM polls WHERE status = 'closed'").get().count;
+
+    const surveyResponses = db.prepare('SELECT COUNT(*) AS count FROM responses').get().count;
+    const pollResponses = db.prepare('SELECT COUNT(*) AS count FROM poll_votes').get().count;
+    const totalResponses = surveyResponses + pollResponses;
+
+    const surveyQuestions = db.prepare('SELECT COUNT(*) AS count FROM questions').get().count;
+    const pollQuestions = db.prepare('SELECT COUNT(*) AS count FROM poll_questions').get().count;
+    const totalQuestions = surveyQuestions + pollQuestions;
+
     const totalEmailsSent = db.prepare("SELECT COUNT(*) AS count FROM email_logs WHERE email_type = 'response_notification'").get().count;
 
     const recentUsers = db.prepare(`
@@ -27,19 +39,39 @@ router.get('/stats', (req, res) => {
       LIMIT 5
     `).all();
 
-    const recentResponses = db.prepare(`
+    const recentSurveyResponses = db.prepare(`
       SELECT 
         r.id, 
-        r.survey_id, 
+        r.survey_id AS item_id, 
         r.submitted_at, 
-        s.title AS survey_title, 
-        u.email AS author_email
+        s.title AS item_title, 
+        u.email AS author_email,
+        'survey' AS type
       FROM responses r
       JOIN surveys s ON s.id = r.survey_id
       JOIN users u ON u.id = s.user_id
       ORDER BY r.submitted_at DESC
-      LIMIT 5
+      LIMIT 10
     `).all();
+
+    const recentPollVotes = db.prepare(`
+      SELECT 
+        v.id, 
+        v.poll_id AS item_id, 
+        v.created_at AS submitted_at, 
+        p.title AS item_title, 
+        u.email AS author_email,
+        'poll' AS type
+      FROM poll_votes v
+      JOIN polls p ON p.id = v.poll_id
+      JOIN users u ON u.id = p.user_id
+      ORDER BY v.created_at DESC
+      LIMIT 10
+    `).all();
+
+    const recentResponses = [...recentSurveyResponses, ...recentPollVotes]
+      .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at))
+      .slice(0, 10);
 
     // Time-series trends for charts
     const userTrends = db.prepare(`
@@ -77,10 +109,18 @@ router.get('/stats', (req, res) => {
         totalSurveys,
         activeSurveys,
         inactiveSurveys,
+        totalPolls,
+        activePolls,
+        draftPolls,
+        closedPolls,
         totalResponses,
+        surveyResponses,
+        pollResponses,
         totalQuestions,
+        surveyQuestions,
+        pollQuestions,
         totalEmailsSent,
-        avgResponsesPerSurvey: totalSurveys > 0 ? (totalResponses / totalSurveys).toFixed(1) : 0,
+        avgResponsesPerSurvey: totalSurveys > 0 ? (surveyResponses / totalSurveys).toFixed(1) : 0,
         avgSurveysPerUser: totalUsers > 0 ? (totalSurveys / totalUsers).toFixed(1) : 0
       },
       trends: {
@@ -111,9 +151,10 @@ router.get('/users', (req, res) => {
         u.id, 
         u.email, 
         u.created_at,
-        COUNT(DISTINCT s.id) AS survey_count,
-        SUM(CASE WHEN s.is_active = 1 THEN 1 ELSE 0 END) AS active_survey_count,
-        COUNT(DISTINCT r.id) AS response_count,
+        (SELECT COUNT(*) FROM surveys s WHERE s.user_id = u.id) AS survey_count,
+        (SELECT COUNT(*) FROM polls p WHERE p.user_id = u.id) AS poll_count,
+        ((SELECT COUNT(*) FROM responses r JOIN surveys s ON s.id = r.survey_id WHERE s.user_id = u.id) +
+         (SELECT COUNT(*) FROM poll_votes pv JOIN polls p ON p.id = pv.poll_id WHERE p.user_id = u.id)) AS response_count,
         (
           SELECT COUNT(*) 
           FROM email_logs el 
@@ -122,8 +163,6 @@ router.get('/users', (req, res) => {
             AND el.email_type = 'response_notification'
         ) AS emails_sent
       FROM users u
-      LEFT JOIN surveys s ON s.user_id = u.id
-      LEFT JOIN responses r ON r.survey_id = s.id
     `;
 
     const params = [];
@@ -132,14 +171,15 @@ router.get('/users', (req, res) => {
       params.push(search);
     }
 
-    query += ` GROUP BY u.id ORDER BY u.created_at DESC`;
+    query += ` ORDER BY u.created_at DESC`;
 
     const rawUsers = db.prepare(query).all(...params);
     const users = rawUsers.map(u => ({
       ...u,
       is_admin: u.email.toLowerCase() === ADMIN_EMAIL,
       survey_count: Number(u.survey_count || 0),
-      active_survey_count: Number(u.active_survey_count || 0),
+      poll_count: Number(u.poll_count || 0),
+      total_items_count: Number(u.survey_count || 0) + Number(u.poll_count || 0),
       response_count: Number(u.response_count || 0),
       emails_sent: Number(u.emails_sent || 0)
     }));
@@ -179,6 +219,7 @@ router.get('/users/:id', (req, res) => {
         s.description, 
         s.is_active, 
         s.created_at,
+        'survey' AS type,
         COUNT(DISTINCT q.id) AS question_count,
         COUNT(DISTINCT r.id) AS response_count
       FROM surveys s
@@ -186,10 +227,30 @@ router.get('/users/:id', (req, res) => {
       LEFT JOIN responses r ON r.survey_id = s.id
       WHERE s.user_id = ?
       GROUP BY s.id
-      ORDER BY s.created_at DESC
     `).all(user.id);
 
-    return res.json({ user, surveys });
+    const polls = db.prepare(`
+      SELECT 
+        p.id, 
+        p.title, 
+        p.description, 
+        p.code,
+        p.status,
+        (CASE WHEN p.status = 'live' THEN 1 ELSE 0 END) AS is_active,
+        p.created_at,
+        'poll' AS type,
+        COUNT(DISTINCT pq.id) AS question_count,
+        COUNT(DISTINCT pv.id) AS response_count
+      FROM polls p
+      LEFT JOIN poll_questions pq ON pq.poll_id = p.id
+      LEFT JOIN poll_votes pv ON pv.poll_id = p.id
+      WHERE p.user_id = ?
+      GROUP BY p.id
+    `).all(user.id);
+
+    const items = [...surveys, ...polls].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    return res.json({ user, surveys: items });
   } catch (err) {
     console.error('Admin user detail error:', err);
     return res.status(500).json({ error: 'Failed to fetch user details' });
@@ -393,6 +454,83 @@ router.delete('/surveys/:id', (req, res) => {
   } catch (err) {
     console.error('Admin delete survey error:', err);
     return res.status(500).json({ error: 'Failed to delete survey' });
+  }
+});
+
+/**
+ * GET /api/admin/polls
+ * List all live polls across the system with author email, question and vote counts
+ */
+router.get('/polls', (req, res) => {
+  try {
+    const { search, status } = req.query;
+
+    let query = `
+      SELECT 
+        p.id, 
+        p.title, 
+        p.description, 
+        p.code,
+        p.status, 
+        p.created_at,
+        p.user_id,
+        u.email AS author_email,
+        COUNT(DISTINCT pq.id) AS question_count,
+        COUNT(DISTINCT pv.id) AS response_count
+      FROM polls p
+      JOIN users u ON u.id = p.user_id
+      LEFT JOIN poll_questions pq ON pq.poll_id = p.id
+      LEFT JOIN poll_votes pv ON pv.poll_id = p.id
+    `;
+
+    const conditions = [];
+    const params = [];
+
+    if (search && search.trim()) {
+      conditions.push('(p.title LIKE ? OR p.description LIKE ? OR p.code LIKE ? OR u.email LIKE ?)');
+      const term = `%${search.trim()}%`;
+      params.push(term, term, term, term);
+    }
+
+    if (status === 'live') {
+      conditions.push("p.status = 'live'");
+    } else if (status === 'draft') {
+      conditions.push("p.status = 'draft'");
+    } else if (status === 'closed') {
+      conditions.push("p.status = 'closed'");
+    }
+
+    if (conditions.length > 0) {
+      query += ` WHERE ` + conditions.join(' AND ');
+    }
+
+    query += ` GROUP BY p.id ORDER BY p.created_at DESC`;
+
+    const polls = db.prepare(query).all(...params);
+    return res.json({ polls });
+  } catch (err) {
+    console.error('Admin polls list error:', err);
+    return res.status(500).json({ error: 'Failed to list polls' });
+  }
+});
+
+/**
+ * DELETE /api/admin/polls/:id
+ * Delete any poll across the system
+ */
+router.delete('/polls/:id', (req, res) => {
+  try {
+    const pollId = req.params.id;
+    const existing = db.prepare('SELECT id, title FROM polls WHERE id = ?').get(pollId);
+    if (!existing) {
+      return res.status(404).json({ error: 'Poll not found' });
+    }
+
+    db.prepare('DELETE FROM polls WHERE id = ?').run(pollId);
+    return res.json({ message: `Poll "${existing.title}" deleted successfully.` });
+  } catch (err) {
+    console.error('Admin delete poll error:', err);
+    return res.status(500).json({ error: 'Failed to delete poll' });
   }
 });
 
