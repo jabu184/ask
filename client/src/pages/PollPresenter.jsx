@@ -395,85 +395,183 @@ export default function PollPresenter() {
 
       {/* Main Presentation Stage */}
       {!isLive ? (
-        /* Pre-Live Joining Lobby (centered in view) */
-        <main className="flex-1 px-4 sm:px-8 py-8 max-w-3xl mx-auto w-full flex flex-col items-center justify-center">
-          <div className="bg-white rounded-3xl border border-slate-200/90 p-8 sm:p-10 shadow-sm text-center w-full space-y-6 animate-fadeIn">
-            <div className="space-y-2">
-              <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-200 text-xs font-bold uppercase tracking-wider">
-                <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
-                <span>Waiting for Host to Start</span>
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                {poll.title}
-              </h2>
-              <p className="text-sm text-slate-500 max-w-md mx-auto">
-                Scan the QR code with your phone camera or visit the link below to join. Questions will appear as soon as the host starts!
-              </p>
-            </div>
+        /* Pre-Live Joining Lobby */
+        <main className="flex-1 px-4 sm:px-8 py-8 max-w-6xl mx-auto w-full flex flex-col justify-center">
+          {isQuizMode ? (
+            /* 2-Column Layout: Left Column = Joining Details, Right Column = Joined Participants */
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch animate-fadeIn">
+              {/* Left Column: Joining Details */}
+              <div className="lg:col-span-5 flex flex-col">
+                <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-sm text-center flex flex-col justify-between h-full space-y-5">
+                  <div className="space-y-2">
+                    <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-200 text-xs font-bold uppercase tracking-wider">
+                      <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
+                      <span>Waiting for Host to Start</span>
+                    </span>
+                    <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight leading-snug">
+                      {poll.title}
+                    </h2>
+                    <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                      Scan the QR code with your phone camera or visit the link below to join.
+                    </p>
+                  </div>
 
-            {/* Centered Large High-Contrast QR Code */}
-            <div className="inline-block p-4 bg-white rounded-3xl border-2 border-slate-200 shadow-xs">
-              {qrDataUrl ? (
-                <img
-                  src={qrDataUrl}
-                  alt="Scan to join poll"
-                  className="w-56 h-56 sm:w-64 sm:h-64 object-contain mx-auto"
-                />
-              ) : (
-                <div className="w-56 h-56 bg-slate-100 rounded-2xl flex items-center justify-center animate-pulse">
-                  <QrCode className="w-14 h-14 text-slate-400" />
+                  {/* High-Contrast QR Code */}
+                  <div className="inline-block p-3.5 bg-white rounded-2xl border-2 border-slate-200 shadow-xs mx-auto">
+                    {qrDataUrl ? (
+                      <img
+                        src={qrDataUrl}
+                        alt="Scan to join poll"
+                        className="w-48 h-48 sm:w-56 sm:h-56 object-contain mx-auto"
+                      />
+                    ) : (
+                      <div className="w-48 h-48 bg-slate-100 rounded-2xl flex items-center justify-center animate-pulse">
+                        <QrCode className="w-12 h-12 text-slate-400" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Web Address & PIN */}
+                  <div className="space-y-2 max-w-xs mx-auto w-full">
+                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                      Or visit in your browser:
+                    </div>
+                    <div className="text-base sm:text-lg font-bold text-brand-700 font-mono">
+                      ask.urspace.com/p
+                    </div>
+                    <div className="bg-slate-900 text-white rounded-2xl p-3.5 shadow-inner mt-1">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
+                        Event PIN
+                      </div>
+                      <div className="text-2xl sm:text-3xl font-black font-mono tracking-widest text-white">
+                        {poll.code}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
-
-            {/* Instructions & PIN */}
-            <div className="space-y-2 max-w-md mx-auto">
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Or join on any device at:
               </div>
-              <div className="text-lg sm:text-xl font-bold text-brand-700 font-mono">
-                ask.urspace.com/p
-              </div>
-              <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-inner mt-2">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                  Event PIN
-                </div>
-                <div className="text-3xl sm:text-4xl font-black font-mono tracking-widest text-white">
-                  {poll.code}
-                </div>
-              </div>
-            </div>
 
-            {/* Quiz Mode Joined Participants Roster */}
-            {isQuizMode && (
-              <div className="pt-6 border-t border-slate-100 space-y-3">
-                <div className="flex items-center justify-center space-x-2">
-                  <Trophy className="w-4 h-4 text-amber-500" />
-                  <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                    Participants Joined ({leaderboard.length})
-                  </span>
-                </div>
-
-                {leaderboard.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">
-                    Waiting for participants to choose their nickname and avatar to join...
-                  </p>
-                ) : (
-                  <div className="flex flex-wrap items-center justify-center gap-2 max-h-56 overflow-y-auto p-1">
-                    {leaderboard.map((player, idx) => (
-                      <span
-                        key={player.participantId || player.participant_id || idx}
-                        className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-900 text-xs font-bold shadow-2xs animate-in zoom-in-95"
-                      >
-                        <span className="text-base">{player.avatar || '🚀'}</span>
-                        <span>{player.name}</span>
+              {/* Right Column: Joined Participants Roster */}
+              <div className="lg:col-span-7 flex flex-col">
+                <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-sm flex flex-col justify-between h-full space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+                      <div className="flex items-center space-x-2">
+                        <Trophy className="w-5 h-5 text-amber-500" />
+                        <h3 className="text-base font-bold text-slate-900">
+                          Participants Joined
+                        </h3>
+                      </div>
+                      <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-black">
+                        {leaderboard.length} Ready
                       </span>
-                    ))}
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Participants appear here live as they choose their nickname and avatar.
+                    </p>
+                  </div>
+
+                  {/* Roster Grid / Placeholder */}
+                  <div className="flex-1 flex flex-col justify-center py-2">
+                    {leaderboard.length === 0 ? (
+                      <div className="py-16 text-center bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto text-2xl shadow-2xs">
+                          🚀
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-800">
+                          No players have entered yet
+                        </h4>
+                        <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                          Scan the QR code on the left to join and pick your avatar!
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-[460px] overflow-y-auto pr-1">
+                        {leaderboard.map((player, idx) => (
+                          <div
+                            key={player.participantId || player.participant_id || idx}
+                            className="p-3 rounded-2xl bg-slate-50 border border-slate-200/90 shadow-2xs flex items-center space-x-3 transition animate-in zoom-in-95 hover:border-brand-300 hover:bg-brand-50/30"
+                          >
+                            <span className="text-2xl sm:text-3xl shrink-0">
+                              {player.avatar || '🚀'}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <span className="block font-bold text-slate-900 text-xs sm:text-sm truncate">
+                                {player.name}
+                              </span>
+                              <span className="block text-[10px] font-semibold text-slate-600 uppercase tracking-wider">
+                                Player #{idx + 1}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer status */}
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                    <span className="flex items-center space-x-1.5 font-medium">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>Live Lobby Roster</span>
+                    </span>
+                    <span className="font-semibold text-slate-700">
+                      {leaderboard.length} {leaderboard.length === 1 ? 'player' : 'players'} waiting
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Non-Quiz Mode: Centered Joining Details */
+            <div className="bg-white rounded-3xl border border-slate-200/90 p-8 sm:p-10 shadow-sm text-center max-w-2xl mx-auto w-full space-y-6 animate-fadeIn">
+              <div className="space-y-2">
+                <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-200 text-xs font-bold uppercase tracking-wider">
+                  <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
+                  <span>Waiting for Host to Start</span>
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                  {poll.title}
+                </h2>
+                <p className="text-sm text-slate-500 max-w-md mx-auto">
+                  Scan the QR code with your phone camera or visit the link below to join. Questions will appear as soon as the host starts!
+                </p>
+              </div>
+
+              {/* Centered Large High-Contrast QR Code */}
+              <div className="inline-block p-4 bg-white rounded-3xl border-2 border-slate-200 shadow-xs">
+                {qrDataUrl ? (
+                  <img
+                    src={qrDataUrl}
+                    alt="Scan to join poll"
+                    className="w-56 h-56 sm:w-64 sm:h-64 object-contain mx-auto"
+                  />
+                ) : (
+                  <div className="w-56 h-56 bg-slate-100 rounded-2xl flex items-center justify-center animate-pulse">
+                    <QrCode className="w-14 h-14 text-slate-400" />
                   </div>
                 )}
               </div>
-            )}
-          </div>
+
+              {/* Instructions & PIN */}
+              <div className="space-y-2 max-w-md mx-auto">
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  Or join on any device at:
+                </div>
+                <div className="text-lg sm:text-xl font-bold text-brand-700 font-mono">
+                  ask.urspace.com/p
+                </div>
+                <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-inner mt-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Event PIN
+                  </div>
+                  <div className="text-3xl sm:text-4xl font-black font-mono tracking-widest text-white">
+                    {poll.code}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       ) : (
         /* Live Poll Presentation View */

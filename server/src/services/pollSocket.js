@@ -209,6 +209,7 @@ function computePollLeaderboard(pollId) {
       LEFT JOIN poll_questions q ON q.id = v.question_id 
         AND q.correct_answer IS NOT NULL 
         AND TRIM(q.correct_answer) != '' 
+        AND q.answer_revealed = 1
         AND LOWER(TRIM(v.value)) = LOWER(TRIM(q.correct_answer))
       WHERE p.poll_id = ?
       GROUP BY p.participant_id
@@ -614,12 +615,19 @@ function initPollSocket(httpServer) {
                 correctAnswer = parsed.correctAnswer || null;
               } catch (e) {}
             }
+            db.prepare('UPDATE poll_questions SET answer_revealed = ? WHERE id = ?').run(val, poll.current_question_id);
           }
         }
         io.to(`poll:${pollId}`).emit('poll:correct_answer_toggled', {
           show_correct_answer: Boolean(val),
           correctAnswer: val === 1 ? correctAnswer : null
         });
+
+        // Broadcast updated leaderboard now that answers have been revealed
+        if (poll.is_quiz_mode === 1) {
+          const leaderboard = computePollLeaderboard(pollId);
+          io.to(`poll:${pollId}`).emit('poll:leaderboard_update', { leaderboard });
+        }
       } catch (err) {
         console.error('[Socket Host Toggle Correct Answer Error]', err);
       }

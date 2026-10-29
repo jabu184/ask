@@ -452,7 +452,10 @@ router.post('/:id/purge', (req, res) => {
       // 4. Delete all quiz participants
       db.prepare('DELETE FROM poll_participants WHERE poll_id = ?').run(poll.id);
 
-      // 5. Reset poll flags
+      // 5. Reset question reveal flags
+      db.prepare('UPDATE poll_questions SET answer_revealed = 0 WHERE poll_id = ?').run(poll.id);
+
+      // 6. Reset poll flags
       db.prepare(`
         UPDATE polls SET
           show_correct_answer = 0,

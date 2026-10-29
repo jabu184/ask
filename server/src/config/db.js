@@ -120,6 +120,7 @@ function initSchema() {
       question_type TEXT NOT NULL,
       options_json TEXT,
       correct_answer TEXT,
+      answer_revealed INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
     );
@@ -275,6 +276,13 @@ function initSchema() {
   // Ensure correct_answer column exists on poll_questions table
   try {
     db.exec(`ALTER TABLE poll_questions ADD COLUMN correct_answer TEXT`);
+  } catch (e) {
+    // Column already exists
+  }
+
+  // Ensure answer_revealed column exists on poll_questions table
+  try {
+    db.exec(`ALTER TABLE poll_questions ADD COLUMN answer_revealed INTEGER DEFAULT 0`);
   } catch (e) {
     // Column already exists
   }
