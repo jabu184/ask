@@ -209,7 +209,9 @@ export default function PollHost() {
           setLeaderboard([]);
           setShowCorrectAnswer(false);
           setShowLeaderboard(false);
-          setQuestions((prev) => prev.map((q) => ({ ...q, results: null })));
+          setQuestions((prev) => prev.map((q) => ({ ...q, results: null, answer_revealed: 0, show_correct_answer: 0 })));
+          setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: 0, show_correct_answer: 0 } : prev));
+          setPoll((prev) => (prev ? { ...prev, show_correct_answer: false, show_leaderboard: false, voting_open: true } : prev));
           setPollStats((prev) => prev ? { ...prev, totalVotes: 0, uniqueParticipants: 0, uniqueVoters: 0, pollEngagementPct: 0, qaEngagementPct: 0, qaCount: 0 } : null);
         });
 
@@ -449,7 +451,9 @@ export default function PollHost() {
       setLeaderboard([]);
       setShowCorrectAnswer(false);
       setShowLeaderboard(false);
-      setQuestions((prev) => prev.map((q) => ({ ...q, results: null })));
+      setQuestions((prev) => prev.map((q) => ({ ...q, results: null, answer_revealed: 0, show_correct_answer: 0 })));
+      setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: 0, show_correct_answer: 0 } : prev));
+      setPoll((prev) => (prev ? { ...prev, show_correct_answer: false, show_leaderboard: false, voting_open: true } : prev));
       setPollStats((prev) => prev ? { ...prev, totalVotes: 0, uniqueParticipants: 0, uniqueVoters: 0, pollEngagementPct: 0, qaEngagementPct: 0, qaCount: 0 } : null);
       setShowPurgeModal(false);
     } catch (err) {

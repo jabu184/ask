@@ -80,7 +80,7 @@ router.post('/:id/vote', (req, res) => {
     if (!question) {
       return res.status(404).json({ error: 'Question not found' });
     }
-    if (poll.show_correct_answer === 1 || question.answer_revealed === 1) {
+    if (poll.show_correct_answer === 1 || question.answer_revealed === 1 || question.show_correct_answer === 1) {
       return res.status(403).json({ error: 'Voting has closed and responses are locked for this question' });
     }
 
@@ -296,7 +296,7 @@ router.post('/:id/remove-word', (req, res) => {
     if (!question || !poll) {
       return res.status(404).json({ error: 'Question or poll not found' });
     }
-    if (poll.show_correct_answer === 1 || question.answer_revealed === 1) {
+    if (poll.show_correct_answer === 1 || question.answer_revealed === 1 || question.show_correct_answer === 1) {
       return res.status(403).json({ error: 'Voting has closed and responses are locked for this question' });
     }
 

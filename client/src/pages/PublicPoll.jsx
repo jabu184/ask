@@ -121,7 +121,7 @@ export default function PublicPoll() {
         setHasVoted(initial.hasVoted);
         setUserVote(initial.userVote);
         setMyWords(initial.userVotes || []);
-        setShowCorrectAnswer(Boolean(initial.poll?.show_correct_answer));
+        setShowCorrectAnswer(Boolean(initial.poll?.show_correct_answer || initial.currentQuestion?.show_correct_answer));
         setCorrectAnswer(initial.currentQuestion?.correct_answer || null);
         setIsQuizMode(Boolean(initial.poll?.is_quiz_mode));
         setShowLeaderboard(Boolean(initial.poll?.show_leaderboard));
@@ -241,11 +241,33 @@ export default function PublicPoll() {
           setSubmittingVote(false);
         });
 
-        socket.on('poll:correct_answer_toggled', ({ show_correct_answer, correctAnswer }) => {
+        socket.on('poll:correct_answer_toggled', ({ show_correct_answer, correctAnswer, questionId }) => {
           setShowCorrectAnswer(Boolean(show_correct_answer));
           if (correctAnswer !== undefined) {
             setCorrectAnswer(correctAnswer);
           }
+          if (questionId) {
+            setCurrentQuestion((prev) => (prev && prev.id === questionId ? { ...prev, show_correct_answer: Boolean(show_correct_answer) } : prev));
+          }
+        });
+
+        socket.on('poll:data_purged', () => {
+          setLiveResults(null);
+          setQaQuestions([]);
+          setLeaderboard([]);
+          setHasVoted(false);
+          setUserVote(null);
+          setMyWords([]);
+          setShowCorrectAnswer(false);
+          setCorrectAnswer(null);
+          setVotingOpen(true);
+          setTextInput('');
+          setQuizProfile(null);
+          try {
+            localStorage.removeItem('ask_quiz_' + code);
+          } catch (e) {}
+          setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: false, show_correct_answer: 0 } : prev));
+          setPoll((prev) => (prev ? { ...prev, voting_open: true, show_correct_answer: false, show_leaderboard: false } : prev));
         });
 
         socket.on('poll:status_changed', (data) => {
@@ -366,7 +388,7 @@ export default function PublicPoll() {
     };
   }, [code, participantId]);
 
-  const isLockedByHost = showCorrectAnswer || Boolean(currentQuestion?.answer_revealed);
+  const isLockedByHost = showCorrectAnswer || Boolean(currentQuestion?.answer_revealed) || Boolean(currentQuestion?.show_correct_answer);
 
   // Handle vote submit
   const handleVote = (val) => {
@@ -1183,10 +1205,18 @@ export default function PublicPoll() {
                   </div>
                 ) : isLockedByHost ? (
                   <div className="mt-5 p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-3 text-slate-800 text-sm font-semibold animate-in fade-in">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    {hasVoted ? (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    ) : (
+                      <Lock className="w-5 h-5 text-amber-600 shrink-0" />
+                    )}
                     <div className="flex-1">
-                      <p>Your response is recorded and locked.</p>
-                      {userVote && (
+                      <p>
+                        {hasVoted
+                          ? 'Your response is recorded and locked.'
+                          : 'Voting is closed for this question. Responses are locked.'}
+                      </p>
+                      {hasVoted && userVote && (
                         <p className="text-xs text-slate-600 font-normal mt-0.5">
                           Final choice: <strong className="font-bold">
                             {Array.isArray(userVote) ? 'Your submitted ranking' : userVote}

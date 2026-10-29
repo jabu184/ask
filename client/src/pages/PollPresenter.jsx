@@ -192,6 +192,8 @@ export default function PollPresenter() {
           setLeaderboard([]);
           setShowCorrectAnswer(false);
           setShowLeaderboard(false);
+          setPoll((prev) => (prev ? { ...prev, show_correct_answer: false, show_leaderboard: false, voting_open: true } : prev));
+          setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: false, show_correct_answer: 0 } : prev));
         });
 
         socket.on('poll:status_changed', ({ status }) => {

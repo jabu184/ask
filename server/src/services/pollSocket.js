@@ -412,7 +412,7 @@ function initPollSocket(httpServer) {
         if (!question) {
           return socket.emit('poll:error', { message: 'Question not found' });
         }
-        if (poll.show_correct_answer === 1 || question.answer_revealed === 1) {
+        if (poll.show_correct_answer === 1 || question.answer_revealed === 1 || question.show_correct_answer === 1) {
           return socket.emit('poll:error', { message: 'Voting has closed and responses are locked for this question' });
         }
         if (poll.current_question_id !== questionId) {

@@ -457,14 +457,15 @@ router.post('/:id/purge', (req, res) => {
       // 4. Delete all quiz participants
       db.prepare('DELETE FROM poll_participants WHERE poll_id = ?').run(poll.id);
 
-      // 5. Reset question reveal flags
-      db.prepare('UPDATE poll_questions SET answer_revealed = 0 WHERE poll_id = ?').run(poll.id);
+      // 5. Reset question reveal flags and correct answer display flags
+      db.prepare('UPDATE poll_questions SET answer_revealed = 0, show_correct_answer = 0 WHERE poll_id = ?').run(poll.id);
 
       // 6. Reset poll flags
       db.prepare(`
         UPDATE polls SET
           show_correct_answer = 0,
           show_leaderboard = 0,
+          voting_open = 1,
           closed_at = NULL
         WHERE id = ?
       `).run(poll.id);
@@ -479,6 +480,11 @@ router.post('/:id/purge', (req, res) => {
         pollId: poll.id,
         message: 'All poll responses, quiz players, and Q&A have been purged'
       });
+      io.to(`poll:${poll.id}`).emit('poll:correct_answer_toggled', {
+        show_correct_answer: false,
+        correctAnswer: null
+      });
+      io.to(`poll:${poll.id}`).emit('poll:voting_toggled', { voting_open: true });
       io.to(`poll:${poll.id}`).emit('poll:leaderboard_update', { leaderboard: [] });
       io.to(`poll:${poll.id}`).emit('poll:results_update', { results: null, totalVotes: 0 });
       io.to(`poll:${poll.id}`).emit('qa:list', []);
