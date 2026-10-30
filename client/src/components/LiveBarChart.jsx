@@ -38,7 +38,7 @@ export default function LiveBarChart({
                   isCorrect ? (
                     <CheckCircle2 className={`text-brand-500 shrink-0 ${isPresenter ? 'w-5 h-5' : 'w-4 h-4'}`} />
                   ) : isIncorrect ? (
-                    <XCircle className={`text-rose-500 shrink-0 ${isPresenter ? 'w-5 h-5' : 'w-4 h-4'}`} />
+                    <XCircle className={`text-red-500 shrink-0 ${isPresenter ? 'w-5 h-5' : 'w-4 h-4'}`} />
                   ) : null
                 ) : isWinner && totalVotes > 1 ? (
                   <CheckCircle2 className={`text-brand-500 shrink-0 ${isPresenter ? 'w-5 h-5' : 'w-4 h-4'}`} />
@@ -74,7 +74,7 @@ export default function LiveBarChart({
                   isCorrect
                     ? 'bg-gradient-to-r from-brand-500 to-indigo-600 shadow-xs'
                     : isIncorrect
-                    ? 'bg-gradient-to-r from-rose-500 to-purple-600 shadow-xs'
+                    ? 'bg-gradient-to-r from-red-500 to-red-800 shadow-xs'
                     : isWinner
                     ? 'bg-gradient-to-r from-brand-500 to-indigo-600 shadow-xs'
                     : 'bg-slate-300 group-hover:bg-slate-400'
