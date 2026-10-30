@@ -33,9 +33,7 @@ export default function LiveBarChart({
           <div key={idx} className="relative group">
             {/* Header row: Option text + percentage / vote count */}
             <div className="flex items-center justify-between mb-1.5 text-slate-800">
-              <span className={`flex items-center gap-2 font-medium ${isPresenter ? 'text-lg sm:text-xl' : 'text-sm sm:text-base'} ${
-                isCorrect ? 'text-emerald-900 font-bold' : isIncorrect ? 'text-rose-900 font-medium' : ''
-              }`}>
+              <span className={`flex items-center gap-2 font-medium text-slate-900 ${isPresenter ? 'text-lg sm:text-xl' : 'text-sm sm:text-base'}`}>
                 {isWinner && totalVotes > 1 && !showCorrectAnswer ? (
                   <CheckCircle2 className={`text-brand-500 shrink-0 ${isPresenter ? 'w-5 h-5' : 'w-4 h-4'}`} />
                 ) : null}
@@ -45,7 +43,7 @@ export default function LiveBarChart({
               {showResults ? (
                 <span className={`font-bold tabular-nums flex items-center gap-2 text-slate-600 ${isPresenter ? 'text-lg' : 'text-sm'}`}>
                   <span className="text-slate-400 font-normal text-xs">({item.count || 0})</span>
-                  <span className={isCorrect ? 'text-emerald-700 font-extrabold' : isIncorrect ? 'text-rose-700 font-bold' : isWinner ? 'text-brand-600 font-extrabold' : ''}>
+                  <span className={isCorrect ? 'text-emerald-700 font-extrabold' : isWinner ? 'text-brand-600 font-extrabold' : 'text-slate-900 font-bold'}>
                     {item.percentage || 0}%
                   </span>
                 </span>
