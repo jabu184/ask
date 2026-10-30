@@ -388,10 +388,11 @@ export default function PollHost() {
 
   const handleSelectQuestion = (qId) => {
     if (!qId || qId === currentQuestion?.id) return;
+    const isLive = poll?.status === 'live';
     const activeQ = questions.find((q) => q.id === currentQuestion?.id) || currentQuestion;
     const hasCorrect = Boolean(activeQ?.correct_answer && String(activeQ.correct_answer).trim());
     const isUnmarked = hasCorrect && activeQ?.answer_revealed !== 1 && activeQ?.answer_revealed !== true;
-    if (isUnmarked) {
+    if (isLive && isUnmarked) {
       setMarkPromptTargetQId(qId);
     } else {
       executeQuestionChange(qId, null);
