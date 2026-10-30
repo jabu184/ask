@@ -304,7 +304,9 @@ export default function PublicPoll() {
           }
         });
 
-        socket.on('poll:question_marked_toggled', ({ questionId, answer_revealed, show_correct_answer, correctAnswer, leaderboard: lb }) => {
+        socket.on('poll:question_marked_toggled', ({ questionId, answer_revealed, show_correct_answer, correctAnswer, leaderboard: lb, liveResults: freshResults }) => {
+          if (freshResults) setLiveResults(freshResults);
+          if (answer_revealed || show_correct_answer) setShowResults(true);
           setCurrentQuestion((prev) => {
             if (prev && prev.id === questionId) {
               return {
@@ -383,8 +385,10 @@ export default function PublicPoll() {
           setSubmittingVote(false);
         });
 
-        socket.on('poll:correct_answer_toggled', ({ show_correct_answer, correctAnswer, questionId }) => {
+        socket.on('poll:correct_answer_toggled', ({ show_correct_answer, correctAnswer, questionId, liveResults: freshResults }) => {
           setShowCorrectAnswer(Boolean(show_correct_answer));
+          if (show_correct_answer) setShowResults(true);
+          if (freshResults) setLiveResults(freshResults);
           setCorrectAnswer(show_correct_answer ? (correctAnswer || null) : null);
           if (questionId) {
             setCurrentQuestion((prev) => (prev && prev.id === questionId ? {

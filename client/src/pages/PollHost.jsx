@@ -146,7 +146,7 @@ export default function PollHost() {
           );
           setCurrentQuestion(mergedActive);
           setShowCorrectAnswer(Boolean(data.show_correct_answer));
-          if (data.liveResults) setLiveResults(data.liveResults);
+          if (data.hostResults || data.liveResults) setLiveResults(data.hostResults || data.liveResults);
           setPoll((prev) => (prev ? { ...prev, current_question_id: data.currentQuestion.id, voting_open: true } : prev));
         });
 
@@ -548,15 +548,31 @@ export default function PollHost() {
 
   const handleRevealAndMarkCurrent = () => {
     if (!poll || !socketRef.current || !currentQuestion) return;
+    const qId = currentQuestion.id;
+    const targetQ = questions.find((q) => q.id === qId) || currentQuestion;
+    const cAns = targetQ?.correct_answer;
+
     setShowCorrectAnswer(true);
-    setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: 1, show_correct_answer: 1, show_results: 1 } : prev));
+    setCurrentQuestion((prev) => (prev ? {
+      ...prev,
+      answer_revealed: 1,
+      show_correct_answer: 1,
+      show_results: 1,
+      correct_answer: cAns || prev.correct_answer
+    } : prev));
     setQuestions((prev) =>
-      prev.map((q) => (q.id === currentQuestion.id ? { ...q, answer_revealed: 1, show_correct_answer: 1, show_results: 1 } : q))
+      prev.map((q) => (q.id === qId ? {
+        ...q,
+        answer_revealed: 1,
+        show_correct_answer: 1,
+        show_results: 1,
+        correct_answer: cAns || q.correct_answer
+      } : q))
     );
     setPoll((prev) => (prev ? { ...prev, show_results: true, show_correct_answer: true } : prev));
     socketRef.current.emit('poll:host_toggle_correct_answer', {
       pollId: id,
-      questionId: currentQuestion.id,
+      questionId: qId,
       show_correct: true
     });
     setMarkPromptTargetQId(null);
@@ -646,6 +662,37 @@ export default function PollHost() {
   const currentQIndex = questions.findIndex((q) => q.id === (currentQuestion?.id));
   const isFirstQ = currentQIndex <= 0;
   const isLastQ = currentQIndex >= questions.length - 1;
+
+  const getQuestionOptions = (q) => {
+    if (!q) return [];
+    if (Array.isArray(q.options)) return q.options;
+    if (q.options_json) {
+      try {
+        const parsed = typeof q.options_json === 'string' ? JSON.parse(q.options_json) : q.options_json;
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {}
+    }
+    return [];
+  };
+
+  const hostQuestionOptions = getQuestionOptions(currentQuestion);
+  const hostMultipleChoiceResults = (() => {
+    if (!hostQuestionOptions || hostQuestionOptions.length === 0) {
+      return liveResults?.results || [];
+    }
+    const resultsMap = new Map();
+    if (liveResults?.results && Array.isArray(liveResults.results)) {
+      liveResults.results.forEach((r) => resultsMap.set(r.option, r));
+    }
+    return hostQuestionOptions.map((opt) => {
+      const match = resultsMap.get(opt);
+      return {
+        option: opt,
+        count: match?.count || 0,
+        percentage: match?.percentage || 0
+      };
+    });
+  })();
 
   // Filtered Q&A
   const filteredQa = qaQuestions.filter((q) => {
@@ -1219,10 +1266,11 @@ export default function PollHost() {
                   {/* Multiple Choice Bar Chart */}
                   {currentQuestion.question_type === 'multiple_choice' && (
                     <LiveBarChart
-                      results={liveResults?.results || []}
+                      results={hostMultipleChoiceResults}
                       totalVotes={liveResults?.totalVotes || 0}
                       correctAnswer={currentQuestion.correct_answer}
                       showCorrectAnswer={showCorrectAnswer}
+                      showResults={true}
                     />
                   )}
 

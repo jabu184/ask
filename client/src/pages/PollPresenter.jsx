@@ -150,10 +150,13 @@ export default function PollPresenter() {
           setCorrectAnswer(cAns);
         });
 
-        socket.on('poll:correct_answer_toggled', ({ questionId, show_correct_answer, correctAnswer }) => {
+        socket.on('poll:correct_answer_toggled', ({ questionId, show_correct_answer, correctAnswer, liveResults: freshResults }) => {
           setShowCorrectAnswer(Boolean(show_correct_answer));
           if (show_correct_answer) {
             setShowResults(true);
+          }
+          if (freshResults) {
+            setLiveResults(freshResults);
           }
           setCorrectAnswer(show_correct_answer ? (correctAnswer || null) : null);
           setCurrentQuestion((prev) => (prev && (!questionId || prev.id === questionId) ? {
@@ -204,8 +207,14 @@ export default function PollPresenter() {
           setCurrentQuestion((prev) => (prev ? { ...prev, answer_revealed: false, show_correct_answer: 0 } : prev));
         });
 
-        socket.on('poll:question_marked_toggled', ({ questionId, answer_revealed, show_correct_answer, correctAnswer, leaderboard: lb }) => {
+        socket.on('poll:question_marked_toggled', ({ questionId, answer_revealed, show_correct_answer, correctAnswer, leaderboard: lb, liveResults: freshResults }) => {
           const isMarkedOrRevealed = Boolean(answer_revealed || show_correct_answer);
+          if (freshResults) {
+            setLiveResults(freshResults);
+          }
+          if (isMarkedOrRevealed) {
+            setShowResults(true);
+          }
           setCurrentQuestion((prev) => {
             if (prev && prev.id === questionId) {
               return {
@@ -218,7 +227,6 @@ export default function PollPresenter() {
             return prev;
           });
           setShowCorrectAnswer(isMarkedOrRevealed);
-          if (isMarkedOrRevealed) setShowResults(true);
           setCorrectAnswer(isMarkedOrRevealed ? (correctAnswer || null) : null);
           if (lb) setLeaderboard(lb);
         });

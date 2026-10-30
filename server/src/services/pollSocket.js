@@ -397,6 +397,10 @@ function initPollSocket(httpServer) {
       const roomName = `poll:${pollId}`;
       socket.join(roomName);
 
+      if (isSocketHost) {
+        socket.join(`poll:${pollId}:host`);
+      }
+
       // Only count actual voting participants (not host, not presenter screen)
       const isVoter = !isHost && !isPresenter;
       if (isVoter && participantId) {
@@ -493,6 +497,11 @@ function initPollSocket(httpServer) {
 
         // Broadcast updated results if show_results is enabled
         const results = computeQuestionResults(question, pollId);
+        io.to(`poll:${pollId}:host`).emit('poll:results_update', {
+          questionId,
+          results,
+          totalVotes: results.totalVotes
+        });
         io.to(`poll:${pollId}`).emit('poll:results_update', {
           questionId,
           results: (poll.show_results === 1) ? results : null,
@@ -520,6 +529,11 @@ function initPollSocket(httpServer) {
         const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
         if (question && poll) {
           const results = computeQuestionResults(question, pollId);
+          io.to(`poll:${pollId}:host`).emit('poll:results_update', {
+            questionId,
+            results,
+            totalVotes: results.totalVotes
+          });
           io.to(`poll:${pollId}`).emit('poll:results_update', {
             questionId,
             results: (poll.show_results === 1) ? results : null,
@@ -601,6 +615,12 @@ function initPollSocket(httpServer) {
 
         const results = computeQuestionResults(question, pollId);
 
+        io.to(`poll:${pollId}:host`).emit('poll:results_update', {
+          questionId,
+          results,
+          totalVotes: results.totalVotes
+        });
+
         io.to(`poll:${pollId}`).emit('poll:question_changed', {
           currentQuestion: {
             id: question.id,
@@ -617,7 +637,8 @@ function initPollSocket(httpServer) {
           show_results: Boolean(qShowResults),
           show_correct_answer: Boolean(qShowCorrect),
           correctAnswer: (qShowCorrect === 1) ? (cAns || null) : null,
-          liveResults: (qShowResults === 1) ? results : null
+          liveResults: (qShowResults === 1) ? results : null,
+          hostResults: results
         });
       } catch (err) {
         console.error('[Socket Host Set Question Error]', err);
@@ -686,17 +707,25 @@ function initPollSocket(httpServer) {
         }
 
         let results = null;
-        if (targetQId && val === 1) {
+        if (targetQId) {
           const question = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(targetQId);
           if (question) {
             results = computeQuestionResults(question, pollId);
           }
         }
 
+        if (results) {
+          io.to(`poll:${pollId}:host`).emit('poll:results_update', {
+            questionId: targetQId,
+            results,
+            totalVotes: results.totalVotes
+          });
+        }
+
         io.to(`poll:${pollId}`).emit('poll:results_toggled', {
           questionId: targetQId,
           show_results: Boolean(val),
-          liveResults: results
+          liveResults: val === 1 ? results : null
         });
       } catch (err) {
         console.error('[Socket Host Toggle Results Error]', err);
@@ -720,6 +749,7 @@ function initPollSocket(httpServer) {
         const targetQId = questionId || poll?.current_question_id;
 
         let correctAnswer = null;
+        let results = null;
         if (targetQId) {
           const q = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(targetQId);
           if (q) {
@@ -729,6 +759,7 @@ function initPollSocket(httpServer) {
             } else {
               db.prepare('UPDATE poll_questions SET show_correct_answer = 0 WHERE id = ?').run(targetQId);
             }
+            results = computeQuestionResults(q, pollId);
           }
         }
 
@@ -743,8 +774,30 @@ function initPollSocket(httpServer) {
           questionId: targetQId,
           show_correct_answer: Boolean(val),
           answer_revealed: val === 1 ? 1 : undefined,
-          correctAnswer: val === 1 ? correctAnswer : null
+          correctAnswer: val === 1 ? correctAnswer : null,
+          liveResults: results
         });
+
+        if (val === 1 && results) {
+          io.to(`poll:${pollId}`).emit('poll:results_toggled', {
+            questionId: targetQId,
+            show_results: true,
+            liveResults: results
+          });
+          io.to(`poll:${pollId}`).emit('poll:results_update', {
+            questionId: targetQId,
+            results,
+            totalVotes: results.totalVotes
+          });
+        }
+
+        if (results) {
+          io.to(`poll:${pollId}:host`).emit('poll:results_update', {
+            questionId: targetQId,
+            results,
+            totalVotes: results.totalVotes
+          });
+        }
 
         // Broadcast updated leaderboard now that answers have been revealed
         if (val === 1 && poll && poll.is_quiz_mode === 1) {
@@ -778,6 +831,8 @@ function initPollSocket(httpServer) {
           }
         }
 
+        const results = computeQuestionResults(q, pollId);
+
         let leaderboard = [];
         if (poll && poll.is_quiz_mode === 1) {
           leaderboard = computePollLeaderboard(pollId);
@@ -787,8 +842,31 @@ function initPollSocket(httpServer) {
         io.to(`poll:${pollId}`).emit('poll:correct_answer_toggled', {
           questionId,
           show_correct_answer: nextVal === 1,
-          correctAnswer: nextVal === 1 ? cAns : null
+          answer_revealed: nextVal,
+          correctAnswer: nextVal === 1 ? cAns : null,
+          liveResults: results
         });
+
+        if (nextVal === 1 && results) {
+          io.to(`poll:${pollId}`).emit('poll:results_toggled', {
+            questionId,
+            show_results: true,
+            liveResults: results
+          });
+          io.to(`poll:${pollId}`).emit('poll:results_update', {
+            questionId,
+            results,
+            totalVotes: results.totalVotes
+          });
+        }
+
+        if (results) {
+          io.to(`poll:${pollId}:host`).emit('poll:results_update', {
+            questionId,
+            results,
+            totalVotes: results.totalVotes
+          });
+        }
 
         io.to(`poll:${pollId}`).emit('poll:question_marked_toggled', {
           questionId,
@@ -796,7 +874,8 @@ function initPollSocket(httpServer) {
           is_marked: nextVal === 1,
           show_correct_answer: nextVal === 1,
           correctAnswer: nextVal === 1 ? cAns : null,
-          leaderboard
+          leaderboard,
+          liveResults: results
         });
       } catch (err) {
         console.error('[Socket Host Toggle Mark Question Error]', err);
