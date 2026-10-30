@@ -34,7 +34,13 @@ export default function LiveBarChart({
             {/* Header row: Option text + percentage / vote count */}
             <div className="flex items-center justify-between mb-1.5 text-slate-800">
               <span className={`flex items-center gap-2 font-medium text-slate-900 ${isPresenter ? 'text-lg sm:text-xl' : 'text-sm sm:text-base'}`}>
-                {isWinner && totalVotes > 1 && !showCorrectAnswer ? (
+                {showCorrectAnswer && Boolean(correctAnswer) ? (
+                  isCorrect ? (
+                    <CheckCircle2 className={`text-brand-500 shrink-0 ${isPresenter ? 'w-5 h-5' : 'w-4 h-4'}`} />
+                  ) : isIncorrect ? (
+                    <XCircle className={`text-rose-500 shrink-0 ${isPresenter ? 'w-5 h-5' : 'w-4 h-4'}`} />
+                  ) : null
+                ) : isWinner && totalVotes > 1 ? (
                   <CheckCircle2 className={`text-brand-500 shrink-0 ${isPresenter ? 'w-5 h-5' : 'w-4 h-4'}`} />
                 ) : null}
                 <span>{item.option}</span>
@@ -43,7 +49,11 @@ export default function LiveBarChart({
               {showResults ? (
                 <span className={`font-bold tabular-nums flex items-center gap-2 text-slate-600 ${isPresenter ? 'text-lg' : 'text-sm'}`}>
                   <span className="text-slate-400 font-normal text-xs">({item.count || 0})</span>
-                  <span className={isCorrect ? 'text-emerald-700 font-extrabold' : isWinner ? 'text-brand-600 font-extrabold' : 'text-slate-900 font-bold'}>
+                  <span className={
+                    showCorrectAnswer && Boolean(correctAnswer)
+                      ? (isCorrect ? 'text-brand-600 font-extrabold' : 'text-slate-900 font-bold')
+                      : (isWinner ? 'text-brand-600 font-extrabold' : 'text-slate-900 font-bold')
+                  }>
                     {item.percentage || 0}%
                   </span>
                 </span>
@@ -56,39 +66,20 @@ export default function LiveBarChart({
             </div>
 
             {/* Progress bar background container */}
-            <div className={`relative w-full bg-slate-100 rounded-xl overflow-hidden flex items-center ${isPresenter ? 'h-8 sm:h-10' : 'h-7 sm:h-8'} ${
-              isCorrect ? 'ring-2 ring-emerald-400/60 shadow-xs' : isIncorrect ? 'ring-1.5 ring-rose-300/70 shadow-xs' : ''
-            }`}>
+            <div className={`w-full bg-slate-100 rounded-xl overflow-hidden ${isPresenter ? 'h-7 sm:h-9' : 'h-5 sm:h-6'}`}>
               {/* Colored fill bar */}
               <div
                 style={{ width: showResults ? `${item.percentage || 0}%` : '0%' }}
-                className={`absolute inset-y-0 left-0 transition-all duration-500 ease-out rounded-xl ${
+                className={`h-full transition-all duration-500 ease-out rounded-xl ${
                   isCorrect
-                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-xs'
+                    ? 'bg-gradient-to-r from-brand-500 to-indigo-600 shadow-xs'
                     : isIncorrect
-                    ? 'bg-gradient-to-r from-rose-500 to-red-500 shadow-xs'
+                    ? 'bg-gradient-to-r from-rose-500 to-purple-600 shadow-xs'
                     : isWinner
                     ? 'bg-gradient-to-r from-brand-500 to-indigo-600 shadow-xs'
                     : 'bg-slate-300 group-hover:bg-slate-400'
                 }`}
               />
-
-              {/* Inside the bar: Correct / Incorrect badge pill on the right, matching selection boxes */}
-              {showCorrectAnswer && Boolean(correctAnswer) && (
-                <div className="relative z-10 ml-auto mr-2 sm:mr-3 flex items-center pointer-events-none">
-                  {isCorrect ? (
-                    <span className="text-xs font-bold text-emerald-900 px-2.5 py-0.5 rounded-full bg-white/95 border border-emerald-300 flex items-center space-x-1.5 shadow-2xs backdrop-blur-xs">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>Correct Answer</span>
-                    </span>
-                  ) : isIncorrect ? (
-                    <span className="text-xs font-bold text-rose-900 px-2.5 py-0.5 rounded-full bg-white/95 border border-rose-300 flex items-center space-x-1.5 shadow-2xs backdrop-blur-xs">
-                      <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                      <span>Incorrect</span>
-                    </span>
-                  ) : null}
-                </div>
-              )}
             </div>
           </div>
         );
