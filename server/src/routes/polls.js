@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../config/db');
 const { requireAuth } = require('../middleware/auth');
 const { generateId, generatePollPin } = require('../utils/id');
-const { computeQuestionResults, getIO, computePollLeaderboard } = require('../services/pollSocket');
+const { computeQuestionResults, getIO, computePollLeaderboard, computePollStats } = require('../services/pollSocket');
 const { Parser } = require('json2csv');
 
 const router = express.Router();
@@ -213,43 +213,7 @@ router.get('/:id', (req, res) => {
       };
     });
 
-    const totalVotes = db.prepare('SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ?').get(poll.id).count;
-    const totalParticipants = db.prepare('SELECT COUNT(DISTINCT participant_id) as count FROM poll_votes WHERE poll_id = ?').get(poll.id).count;
-    const qaQuestions = db.prepare('SELECT * FROM poll_qa_questions WHERE poll_id = ? ORDER BY is_highlighted DESC, upvotes DESC, created_at DESC').all(poll.id);
-
-    // Compute audience engagement stats
-    const totalAudienceRows = db.prepare(`
-      SELECT participant_id FROM poll_votes WHERE poll_id = ?
-      UNION
-      SELECT participant_id FROM poll_qa_questions WHERE poll_id = ?
-      UNION
-      SELECT participant_id FROM poll_qa_upvotes WHERE qa_question_id IN (SELECT id FROM poll_qa_questions WHERE poll_id = ?)
-      UNION
-      SELECT participant_id FROM poll_participants WHERE poll_id = ?
-    `).all(poll.id, poll.id, poll.id, poll.id);
-    const totalAudience = totalAudienceRows.length;
-    const uniqueVoters = totalParticipants;
-    const uniqueQaParticipants = db.prepare(`
-      SELECT COUNT(DISTINCT participant_id) as count FROM (
-        SELECT participant_id FROM poll_qa_questions WHERE poll_id = ?
-        UNION
-        SELECT participant_id FROM poll_qa_upvotes WHERE qa_question_id IN (SELECT id FROM poll_qa_questions WHERE poll_id = ?)
-      )
-    `).get(poll.id, poll.id).count;
-    const pollEngagementPct = totalAudience > 0 ? Math.round((uniqueVoters / totalAudience) * 100) : 0;
-    const qaEngagementPct = totalAudience > 0 ? Math.round((uniqueQaParticipants / totalAudience) * 100) : 0;
-
-    const stats = {
-      totalVotes,
-      uniqueParticipants: totalParticipants,
-      totalAudience,
-      uniqueVoters,
-      uniqueQaParticipants,
-      pollEngagementPct,
-      qaEngagementPct,
-      questionCount: questions.length,
-      qaCount: qaQuestions.length
-    };
+    const stats = computePollStats(poll.id);
 
     res.json({
       poll: {
@@ -887,56 +851,20 @@ router.get('/:id/analytics', (req, res) => {
       };
     });
 
-    const totalVotes = db.prepare('SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ?').get(poll.id).count;
-    const totalParticipants = db.prepare('SELECT COUNT(DISTINCT participant_id) as count FROM poll_votes WHERE poll_id = ?').get(poll.id).count;
-    const qaQuestions = db.prepare('SELECT * FROM poll_qa_questions WHERE poll_id = ? ORDER BY is_highlighted DESC, upvotes DESC, created_at DESC').all(poll.id);
-
-    // Compute audience engagement stats
-    const totalAudienceRows = db.prepare(`
-      SELECT participant_id FROM poll_votes WHERE poll_id = ?
-      UNION
-      SELECT participant_id FROM poll_qa_questions WHERE poll_id = ?
-      UNION
-      SELECT participant_id FROM poll_qa_upvotes WHERE qa_question_id IN (SELECT id FROM poll_qa_questions WHERE poll_id = ?)
-      UNION
-      SELECT participant_id FROM poll_participants WHERE poll_id = ?
-    `).all(poll.id, poll.id, poll.id, poll.id);
-    const totalAudience = totalAudienceRows.length;
-    const uniqueVoters = totalParticipants;
-    const uniqueQaParticipants = db.prepare(`
-      SELECT COUNT(DISTINCT participant_id) as count FROM (
-        SELECT participant_id FROM poll_qa_questions WHERE poll_id = ?
-        UNION
-        SELECT participant_id FROM poll_qa_upvotes WHERE qa_question_id IN (SELECT id FROM poll_qa_questions WHERE poll_id = ?)
-      )
-    `).get(poll.id, poll.id).count;
-    const pollEngagementPct = totalAudience > 0 ? Math.round((uniqueVoters / totalAudience) * 100) : 0;
-    const qaEngagementPct = totalAudience > 0 ? Math.round((uniqueQaParticipants / totalAudience) * 100) : 0;
-
-    const stats = {
-      totalVotes,
-      uniqueParticipants: totalParticipants,
-      totalAudience,
-      uniqueVoters,
-      uniqueQaParticipants,
-      pollEngagementPct,
-      qaEngagementPct,
-      questionCount: questions.length,
-      qaCount: qaQuestions.length
-    };
+    const stats = computePollStats(poll.id);
 
     const leaderboard = poll.is_quiz_mode === 1 ? computePollLeaderboard(poll.id) : [];
 
     res.json({
       poll,
       stats,
-      totalVotes,
-      totalParticipants,
-      totalAudience,
-      uniqueVoters,
-      uniqueQaParticipants,
-      pollEngagementPct,
-      qaEngagementPct,
+      totalVotes: stats.totalVotes,
+      totalParticipants: stats.totalParticipants,
+      totalAudience: stats.totalAudience,
+      uniqueVoters: stats.uniqueVoters,
+      uniqueQaParticipants: stats.uniqueQaParticipants,
+      pollEngagementPct: stats.pollEngagementPct,
+      qaEngagementPct: stats.qaEngagementPct,
       questions: questionsAnalytics,
       qaQuestions,
       leaderboard

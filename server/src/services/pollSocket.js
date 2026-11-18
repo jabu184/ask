@@ -8,6 +8,7 @@ function computeQuestionResults(question, pollId) {
   if (!question) return null;
 
   const totalVotes = db.prepare('SELECT COUNT(*) as count FROM poll_votes WHERE question_id = ?').get(question.id).count;
+  const voterCount = db.prepare('SELECT COUNT(DISTINCT participant_id) as count FROM poll_votes WHERE question_id = ?').get(question.id).count;
   const rawVotes = db.prepare('SELECT value FROM poll_votes WHERE question_id = ? ORDER BY created_at ASC').all(question.id);
 
   if (question.question_type === 'multiple_choice') {
@@ -33,6 +34,7 @@ function computeQuestionResults(question, pollId) {
     return {
       type: 'multiple_choice',
       totalVotes,
+      voterCount,
       results
     };
   }
@@ -59,6 +61,7 @@ function computeQuestionResults(question, pollId) {
     return {
       type: 'word_cloud',
       totalVotes,
+      voterCount,
       words
     };
   }
@@ -89,6 +92,7 @@ function computeQuestionResults(question, pollId) {
     return {
       type: 'rating',
       totalVotes,
+      voterCount,
       maxRating,
       average,
       counts
@@ -165,6 +169,7 @@ function computeQuestionResults(question, pollId) {
     return {
       type: 'ranking',
       totalVotes,
+      voterCount,
       validBallots,
       optionsCount: n,
       results
@@ -175,6 +180,7 @@ function computeQuestionResults(question, pollId) {
   return {
     type: 'open_text',
     totalVotes,
+    voterCount,
     responses: rawVotes.slice(-30).map(v => v.value)
   };
 }
@@ -265,6 +271,92 @@ function getQuestionCorrectAnswer(q) {
   return null;
 }
 
+function computePollStats(pollId) {
+  try {
+    const totalVotes = db.prepare('SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ?').get(pollId).count;
+    const uniqueVoters = db.prepare('SELECT COUNT(DISTINCT participant_id) as count FROM poll_votes WHERE poll_id = ?').get(pollId).count;
+
+    const totalAudienceRows = db.prepare(`
+      SELECT participant_id FROM poll_votes WHERE poll_id = ?
+      UNION
+      SELECT participant_id FROM poll_qa_questions WHERE poll_id = ?
+      UNION
+      SELECT participant_id FROM poll_qa_upvotes WHERE qa_question_id IN (SELECT id FROM poll_qa_questions WHERE poll_id = ?)
+      UNION
+      SELECT participant_id FROM poll_participants WHERE poll_id = ?
+    `).all(pollId, pollId, pollId, pollId);
+
+    const audienceSet = new Set(totalAudienceRows.map(r => r.participant_id));
+    getActiveParticipantIds(pollId).forEach(pid => {
+      if (pid) audienceSet.add(pid);
+    });
+
+    const activeVoters = getActiveVoterCount(pollId);
+    const totalParticipants = Math.max(audienceSet.size, uniqueVoters, activeVoters);
+
+    const questions = db.prepare('SELECT id FROM poll_questions WHERE poll_id = ?').all(pollId);
+    const questionCount = questions.length;
+
+    let sumQuestionVoters = 0;
+    if (questionCount > 0) {
+      const qVoterStmt = db.prepare('SELECT COUNT(DISTINCT participant_id) as count FROM poll_votes WHERE question_id = ?');
+      for (const q of questions) {
+        sumQuestionVoters += qVoterStmt.get(q.id).count;
+      }
+    }
+
+    const avgVotersPerQuestion = questionCount > 0 ? Number((sumQuestionVoters / questionCount).toFixed(1)) : 0;
+    // Engagement is the average response rate over all questions: (no of voters / no of participants)
+    const pollEngagementPct = (questionCount > 0 && totalParticipants > 0)
+      ? Math.min(100, Math.round((sumQuestionVoters / (questionCount * totalParticipants)) * 100))
+      : 0;
+
+    const uniqueQaParticipants = db.prepare(`
+      SELECT COUNT(DISTINCT participant_id) as count FROM (
+        SELECT participant_id FROM poll_qa_questions WHERE poll_id = ?
+        UNION
+        SELECT participant_id FROM poll_qa_upvotes WHERE qa_question_id IN (SELECT id FROM poll_qa_questions WHERE poll_id = ?)
+      )
+    `).get(pollId, pollId).count;
+
+    const qaCount = db.prepare('SELECT COUNT(*) as count FROM poll_qa_questions WHERE poll_id = ?').get(pollId).count;
+    const qaEngagementPct = totalParticipants > 0 ? Math.round((uniqueQaParticipants / totalParticipants) * 100) : 0;
+
+    return {
+      totalVotes,
+      uniqueParticipants: totalParticipants,
+      totalParticipants,
+      totalAudience: totalParticipants,
+      uniqueVoters,
+      activeVoters,
+      sumQuestionVoters,
+      avgVotersPerQuestion,
+      pollEngagementPct,
+      qaEngagementPct,
+      uniqueQaParticipants,
+      questionCount,
+      qaCount
+    };
+  } catch (err) {
+    console.error('[Compute Poll Stats Error]', err);
+    return {
+      totalVotes: 0,
+      uniqueParticipants: 0,
+      totalParticipants: 0,
+      totalAudience: 0,
+      uniqueVoters: 0,
+      activeVoters: 0,
+      sumQuestionVoters: 0,
+      avgVotersPerQuestion: 0,
+      pollEngagementPct: 0,
+      qaEngagementPct: 0,
+      uniqueQaParticipants: 0,
+      questionCount: 0,
+      qaCount: 0
+    };
+  }
+}
+
 function getPollState(pollId, participantId = null, isHost = false) {
   const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
   if (!poll) return null;
@@ -333,13 +425,24 @@ function getPollState(pollId, participantId = null, isHost = false) {
       created_at: poll.created_at,
       closed_at: poll.closed_at
     },
-    questions: isHost ? questions.map(q => ({
-      ...q,
-      correct_answer: getQuestionCorrectAnswer(q),
-      show_results: (q.show_results !== 0 && q.show_results !== null) ? 1 : 0,
-      show_correct_answer: q.show_correct_answer === 1 ? 1 : 0,
-      answer_revealed: Boolean(q.answer_revealed)
-    })) : undefined,
+    questions: isHost ? questions.map(q => {
+      let parsedOptions = [];
+      try {
+        parsedOptions = typeof q.options_json === 'string' ? JSON.parse(q.options_json) : (q.options_json || []);
+      } catch (e) {
+        parsedOptions = [];
+      }
+      return {
+        ...q,
+        options: parsedOptions,
+        correct_answer: getQuestionCorrectAnswer(q),
+        show_results: (q.show_results !== 0 && q.show_results !== null) ? 1 : 0,
+        show_correct_answer: q.show_correct_answer === 1 ? 1 : 0,
+        answer_revealed: Boolean(q.answer_revealed),
+        results: computeQuestionResults(q, pollId)
+      };
+    }) : undefined,
+    stats: isHost ? computePollStats(pollId) : undefined,
     currentQuestion: currentQuestion ? {
       id: currentQuestion.id,
       order_num: currentQuestion.order_num,
@@ -408,6 +511,18 @@ function initPollSocket(httpServer) {
           pollVoters.set(pollId, new Map());
         }
         pollVoters.get(pollId).set(socket.id, participantId);
+
+        try {
+          const existing = db.prepare('SELECT id FROM poll_participants WHERE poll_id = ? AND participant_id = ?').get(pollId, participantId);
+          if (!existing) {
+            db.prepare(`
+              INSERT INTO poll_participants (id, poll_id, participant_id, name, avatar, score)
+              VALUES (?, ?, ?, ?, ?, 0)
+            `).run(generateId(), pollId, participantId, 'Participant', '🚀');
+          }
+        } catch (e) {
+          console.error('[Record Participant Error]', e);
+        }
       }
 
       // Send current state to joining socket
@@ -419,6 +534,10 @@ function initPollSocket(httpServer) {
         io.to(roomName).emit('poll:participant_count', {
           count: getActiveVoterCount(pollId),
           activeParticipantIds: getActiveParticipantIds(pollId)
+        });
+
+        io.to(`poll:${pollId}:host`).emit('poll:stats_update', {
+          stats: computePollStats(pollId)
         });
       }
     });
@@ -497,10 +616,12 @@ function initPollSocket(httpServer) {
 
         // Broadcast updated results if show_results is enabled
         const results = computeQuestionResults(question, pollId);
+        const stats = computePollStats(pollId);
         io.to(`poll:${pollId}:host`).emit('poll:results_update', {
           questionId,
           results,
-          totalVotes: results.totalVotes
+          totalVotes: results.totalVotes,
+          stats
         });
         io.to(`poll:${pollId}`).emit('poll:results_update', {
           questionId,
@@ -529,10 +650,12 @@ function initPollSocket(httpServer) {
         const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
         if (question && poll) {
           const results = computeQuestionResults(question, pollId);
+          const stats = computePollStats(pollId);
           io.to(`poll:${pollId}:host`).emit('poll:results_update', {
             questionId,
             results,
-            totalVotes: results.totalVotes
+            totalVotes: results.totalVotes,
+            stats
           });
           io.to(`poll:${pollId}`).emit('poll:results_update', {
             questionId,
@@ -614,11 +737,13 @@ function initPollSocket(httpServer) {
         }
 
         const results = computeQuestionResults(question, pollId);
+        const stats = computePollStats(pollId);
 
         io.to(`poll:${pollId}:host`).emit('poll:results_update', {
           questionId,
           results,
-          totalVotes: results.totalVotes
+          totalVotes: results.totalVotes,
+          stats
         });
 
         io.to(`poll:${pollId}`).emit('poll:question_changed', {
@@ -715,10 +840,12 @@ function initPollSocket(httpServer) {
         }
 
         if (results) {
+          const stats = computePollStats(pollId);
           io.to(`poll:${pollId}:host`).emit('poll:results_update', {
             questionId: targetQId,
             results,
-            totalVotes: results.totalVotes
+            totalVotes: results.totalVotes,
+            stats
           });
         }
 
@@ -792,10 +919,12 @@ function initPollSocket(httpServer) {
         }
 
         if (results) {
+          const stats = computePollStats(pollId);
           io.to(`poll:${pollId}:host`).emit('poll:results_update', {
             questionId: targetQId,
             results,
-            totalVotes: results.totalVotes
+            totalVotes: results.totalVotes,
+            stats
           });
         }
 
@@ -861,10 +990,12 @@ function initPollSocket(httpServer) {
         }
 
         if (results) {
+          const stats = computePollStats(pollId);
           io.to(`poll:${pollId}:host`).emit('poll:results_update', {
             questionId,
             results,
-            totalVotes: results.totalVotes
+            totalVotes: results.totalVotes,
+            stats
           });
         }
 
@@ -897,11 +1028,20 @@ function initPollSocket(httpServer) {
 
         const updatedQuestion = db.prepare('SELECT * FROM poll_questions WHERE id = ?').get(questionId);
         const results = computeQuestionResults(updatedQuestion, pollId);
+        const stats = computePollStats(pollId);
         let leaderboard = [];
         if (poll && poll.is_quiz_mode === 1) {
           leaderboard = computePollLeaderboard(pollId);
           io.to(`poll:${pollId}`).emit('poll:leaderboard_update', { leaderboard });
         }
+
+        io.to(`poll:${pollId}:host`).emit('poll:results_update', {
+          questionId,
+          results,
+          totalVotes: 0,
+          stats
+        });
+        io.to(`poll:${pollId}:host`).emit('poll:stats_update', { stats });
 
         io.to(`poll:${pollId}`).emit('poll:question_reset', {
           questionId,
@@ -1053,6 +1193,9 @@ function initPollSocket(httpServer) {
           count,
           activeParticipantIds: getActiveParticipantIds(currentPollId)
         });
+        io.to(`poll:${currentPollId}:host`).emit('poll:stats_update', {
+          stats: computePollStats(currentPollId)
+        });
       }
     });
   });
@@ -1069,5 +1212,6 @@ module.exports = {
   getIO,
   computeQuestionResults,
   computePollLeaderboard,
+  computePollStats,
   getPollState
 };

@@ -126,6 +126,7 @@ export default function PollHost() {
           if (state.qaQuestions) setQaQuestions(state.qaQuestions);
           if (state.leaderboard) setLeaderboard(state.leaderboard);
           if (typeof state.participantCount === 'number') setParticipantCount(state.participantCount);
+          if (state.stats) setPollStats(state.stats);
           setLoading(false);
         });
 
@@ -260,6 +261,20 @@ export default function PollHost() {
         socket.on('poll:results_update', (data) => {
           if (data.results) {
             setLiveResults(data.results);
+            if (data.questionId) {
+              setQuestions((prev) =>
+                prev.map((q) => (q.id === data.questionId ? { ...q, results: data.results } : q))
+              );
+            }
+          }
+          if (data.stats) {
+            setPollStats(data.stats);
+          }
+        });
+
+        socket.on('poll:stats_update', (data) => {
+          if (data.stats) {
+            setPollStats(data.stats);
           }
         });
 
@@ -372,17 +387,25 @@ export default function PollHost() {
       const showCorrect = Boolean(targetQ.show_correct_answer === 1 || targetQ.answer_revealed === 1);
       setCurrentQuestion(targetQ);
       setShowCorrectAnswer(showCorrect);
+      setLiveResults(targetQ.results || null);
       setPoll((prev) => (prev ? {
         ...prev,
         show_results: targetQ.show_results !== false && targetQ.show_results !== 0,
         show_correct_answer: showCorrect
       } : prev));
     }
-    if (markPreviousAction) {
-      setQuestions((prev) =>
-        prev.map((q) => (q.id === currentQuestion?.id ? { ...q, answer_revealed: 1, show_correct_answer: 1 } : q))
-      );
-    }
+    setQuestions((prev) =>
+      prev.map((q) => {
+        let updated = q;
+        if (q.id === currentQuestion?.id && liveResults) {
+          updated = { ...updated, results: liveResults };
+        }
+        if (q.id === currentQuestion?.id && markPreviousAction) {
+          updated = { ...updated, answer_revealed: 1, show_correct_answer: 1 };
+        }
+        return updated;
+      })
+    );
     setMarkPromptTargetQId(null);
   };
 
@@ -703,6 +726,18 @@ export default function PollHost() {
 
   const pendingCount = qaQuestions.filter((q) => q.is_approved === 0).length;
 
+  const totalCalculatedVotes = Math.max(
+    pollStats?.totalVotes || 0,
+    questions.reduce((sum, q) => sum + (q.results?.totalVotes || 0), 0)
+  );
+  const totalSessionParticipants = Math.max(
+    pollStats?.totalParticipants || 0,
+    pollStats?.totalAudience || 0,
+    pollStats?.uniqueVoters || 0,
+    participantCount
+  );
+  const avgEngagementRate = pollStats?.pollEngagementPct ?? 0;
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <SEO title={`Control Poll: ${poll.title}`} />
@@ -930,6 +965,12 @@ export default function PollHost() {
                 if (q.question_type === 'ranking') TypeIcon = ListOrdered;
 
                 const qVotes = isActive ? (liveResults?.totalVotes ?? q.results?.totalVotes ?? 0) : (q.results?.totalVotes || 0);
+                const totalSessionParticipants = Math.max(
+                  pollStats?.totalParticipants || 0,
+                  pollStats?.totalAudience || 0,
+                  pollStats?.uniqueVoters || 0,
+                  participantCount
+                );
 
                 return (
                   <div
@@ -960,7 +1001,7 @@ export default function PollHost() {
                         </span>
                         <span>•</span>
                         <span className="font-semibold text-slate-600">
-                          {qVotes} votes / {participantCount} participants
+                          {qVotes} {qVotes === 1 ? 'vote' : 'votes'} / {totalSessionParticipants} {totalSessionParticipants === 1 ? 'participant' : 'participants'}
                         </span>
                         {isActive && (
                           <span className="text-emerald-600 font-bold uppercase tracking-wider">
@@ -1555,20 +1596,26 @@ export default function PollHost() {
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Total Votes</div>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">
-                {questions.reduce((sum, q) => sum + (q.results?.totalVotes || 0), 0)}
+                {totalCalculatedVotes}
               </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">Across all questions</div>
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Active Voters</div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600">{participantCount}</div>
-            </div>
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Poll Turnout</div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-indigo-600">
-                {pollStats?.pollEngagementPct ?? 0}%
+              <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600">
+                {pollStats?.uniqueVoters || 0}
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5">
-                {pollStats?.uniqueVoters || 0} of {pollStats?.totalAudience || 0} attended
+                {participantCount} online • {totalSessionParticipants} total
+              </div>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Average Engagement</div>
+              <div className="text-2xl sm:text-3xl font-extrabold text-indigo-600">
+                {avgEngagementRate}%
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                avg. {pollStats?.avgVotersPerQuestion ?? 0} voters / {totalSessionParticipants} participants
               </div>
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">

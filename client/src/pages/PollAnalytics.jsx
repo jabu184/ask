@@ -190,11 +190,11 @@ export default function PollAnalytics() {
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-            Poll Turnout
+            Average Engagement
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-indigo-600">{stats.pollEngagementPct ?? 0}%</div>
           <div className="text-[10px] text-slate-400 mt-1">
-            {stats.uniqueVoters || stats.uniqueParticipants || 0} of {stats.totalAudience || stats.uniqueParticipants || 0} audience
+            avg. {stats.avgVotersPerQuestion ?? 0} voters / {stats.totalParticipants || stats.totalAudience || stats.uniqueParticipants || 0} participants
           </div>
         </div>
 
