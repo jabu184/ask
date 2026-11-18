@@ -214,6 +214,7 @@ router.get('/:id', (req, res) => {
     });
 
     const stats = computePollStats(poll.id);
+    const qaQuestions = db.prepare('SELECT * FROM poll_qa_questions WHERE poll_id = ? ORDER BY is_highlighted DESC, upvotes DESC, created_at DESC').all(poll.id);
 
     res.json({
       poll: {
@@ -227,13 +228,13 @@ router.get('/:id', (req, res) => {
         qa_moderation: Boolean(poll.qa_moderation)
       },
       questions: questionsWithResults,
-      totalVotes,
-      totalParticipants,
-      totalAudience,
-      uniqueVoters,
-      uniqueQaParticipants,
-      pollEngagementPct,
-      qaEngagementPct,
+      totalVotes: stats.totalVotes,
+      totalParticipants: stats.totalParticipants,
+      totalAudience: stats.totalAudience,
+      uniqueVoters: stats.uniqueVoters,
+      uniqueQaParticipants: stats.uniqueQaParticipants,
+      pollEngagementPct: stats.pollEngagementPct,
+      qaEngagementPct: stats.qaEngagementPct,
       stats,
       qaQuestions
     });
@@ -852,6 +853,7 @@ router.get('/:id/analytics', (req, res) => {
     });
 
     const stats = computePollStats(poll.id);
+    const qaQuestions = db.prepare('SELECT * FROM poll_qa_questions WHERE poll_id = ? ORDER BY is_highlighted DESC, upvotes DESC, created_at DESC').all(poll.id);
 
     const leaderboard = poll.is_quiz_mode === 1 ? computePollLeaderboard(poll.id) : [];
 
